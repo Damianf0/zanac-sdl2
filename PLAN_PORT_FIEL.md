@@ -119,11 +119,25 @@ Avance (2026-06-17):
 - INFRA: z80dis.py ahora acepta `--seed 0xADDR` para entradas alcanzadas por
   saltos indirectos/tablas (como el descompresor).
 
-### Fase 2 — Scroll vertical + mapa de nivel
-El corazón de Zanac. Cómo se almacena el mapa de fondo, cómo scrollea
-(probable reescritura de la name table por filas + registro de scroll fino),
-y el ritmo del scroll. Trazar en openMSX el patrón de escritura a VRAM por
-frame.
+### Fase 2 — Scroll vertical + mapa de nivel ← EN CURSO
+El corazón de Zanac.
+
+MECANISMO DESCUBIERTO (2026-06-18, tools/probe_scroll*.tcl, openMSX):
+- El scroll es **por SOFTWARE reescribiendo la NAME TABLE** (TMS9918 SCREEN 2
+  no tiene registro de scroll). En 2s de gameplay: name table = 11907
+  escrituras (~99/frame), sprite-attr = 2880 (~24/frame), **patrón/color = 0**
+  (los tiles quedan fijos, cargados una vez).
+- Granularidad de **TILE (8px)**: observando la columna 0 en frames
+  consecutivos, todo el contenido se desplaza 1 fila hacia abajo (el mapa
+  baja hacia la nave) cada ~5 frames; el checksum cambia → entra mapa NUEVO
+  arriba (es una ventana a un mapa vertical más grande, no un ciclo estático).
+- La name table es entonces una VENTANA al mapa; cada paso desplaza filas y
+  escribe la fila nueva desde los datos del mapa.
+
+PENDIENTE: ubicar los datos del mapa en ROM y su formato (¿comprimido con el
+mismo descompresor?), la variable de posición/scroll, el motor que desplaza
+la name table y genera la fila nueva, y el ritmo. Validar la secuencia de
+escrituras a la name table frame a frame vs openMSX.
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
