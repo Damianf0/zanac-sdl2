@@ -253,6 +253,24 @@ int main(int argc, char *argv[])
             printf("ZANAC_MAPREBUILD -> %s\n", mr);
             free(rom); return 0;
         }
+        /* ZANAC_MAPCMD=out.bin + ZANAC_MC_IN=before.bin + ZANAC_MC_HL=hex +
+         * ZANAC_MC_C=hex: corre z_map_command y vuelca la RAM. Valida el
+         * command handler + spawn del mapa contra openMSX. */
+        const char *mc = getenv("ZANAC_MAPCMD");
+        if (mc) {
+            const char *in = getenv("ZANAC_MC_IN");
+            uint16_t hl = getenv("ZANAC_MC_HL") ? (uint16_t)strtol(getenv("ZANAC_MC_HL"), NULL, 16) : 0;
+            uint8_t cc = getenv("ZANAC_MC_C") ? (uint8_t)strtol(getenv("ZANAC_MC_C"), NULL, 16) : 0;
+            uint8_t ram[0xC00];
+            FILE *bi = in ? fopen(in, "rb") : NULL;
+            if (!bi || fread(ram, 1, sizeof ram, bi) != sizeof ram) { free(rom); return 1; }
+            fclose(bi);
+            z_map_command(ram, hl, cc);
+            FILE *o = fopen(mc, "wb");
+            if (o) { fwrite(ram, 1, sizeof ram, o); fclose(o); }
+            printf("ZANAC_MAPCMD -> %s\n", mc);
+            free(rom); return 0;
+        }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }

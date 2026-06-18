@@ -235,6 +235,109 @@ static void rb_driver_entry(uint8_t *ram, uint16_t iy)
     rb_emit(ram, iy);
 }
 
+/* sub 0x9B22: busca un slot libre en la tabla de objetos 0xE620 (21 entradas,
+ * stride 0x20). Devuelve 1 si NO hay slot (carry); *slot = puntero hallado. */
+static int rb_slot_finder(const uint8_t *ram, uint16_t *slot)
+{
+    uint16_t HL = 0xE620u; int B = 0x15;
+    for (;;) {                                    /* 0x9B2C */
+        if ((mrd(ram, HL) & 0xFFu) == 0) { *slot = HL; return 0; }
+        HL = (uint16_t)(HL - 0x20u); if (--B == 0) break;
+    }
+    HL = (uint16_t)(HL + 0x20u); B = 0x15;        /* 0x9B33 */
+    for (;;) {                                    /* 0x9B38 */
+        HL = (uint16_t)(HL + 0x20u);
+        uint8_t a = mrd(ram, HL) & 0x7Fu;
+        if (a == 0x14u || a == 0x25u || a == 0x26u) { *slot = HL; return 0; }
+        if (--B == 0) break;
+    }
+    B = 0x15;
+    for (;;) {                                    /* 0x9B4F */
+        uint8_t a = mrd(ram, HL) & 0x7Fu;
+        if (a == 0x27u || a >= 0x46u) { HL = (uint16_t)(HL - 0x20u); if (--B == 0) break; continue; }
+        *slot = HL; return 0;                      /* AND A (sin carry) */
+    }
+    *slot = HL; return 1;                          /* 0x9B60 SCF */
+}
+
+/* sub 0x95ED: setup de objeto/spawn. `de` = source (tras el byte 0). Devuelve
+ * A (contador) y deja *de_out avanzado. */
+static uint8_t rb_spawn(uint8_t *ram, uint16_t de, uint16_t iy, uint16_t *de_out)
+{
+    uint8_t ret_A = mrd(ram, de); de++;
+    uint8_t Cs = mrd(ram, de); de++;
+    uint8_t B = Cs & 0x1Fu;
+    if (Cs & 0x80u) { mwr16(ram, 0xE71Eu, 0xE780u); mwr(ram, 0xE151u, 0); }
+    for (;;) {
+        uint16_t slot;
+        int carry = rb_slot_finder(ram, &slot);
+        if (carry) {                               /* 0x960C sin slot */
+            de = (uint16_t)(de + 3);
+            if (Cs & 0x40u) {
+                mwr(ram, IXB + 29, (uint8_t)(mrd(ram, IXB + 29) + 1));
+                if (Cs & 0x20u) mwr(ram, IXB + 29, (uint8_t)(mrd(ram, IXB + 29) + 1));
+            }
+        } else {                                   /* 0x9622 slot hallado */
+            if (Cs & 0x80u) {
+                uint16_t hp = mrd16(ram, 0xE71Eu);
+                mwr(ram, hp, de & 0xFFu); mwr(ram, (uint16_t)(hp + 1), (de >> 8) & 0xFFu);
+                hp = (uint16_t)(hp + 4); mwr16(ram, 0xE71Eu, hp);
+                mwr(ram, 0xE151u, (uint8_t)(mrd(ram, 0xE151u) + 1));
+            }
+            mwr(ram, slot, mrd(ram, de)); slot++; de++;     /* 0x963A */
+            mwr(ram, slot, mrd(ram, de)); slot++; de++;
+            uint8_t Bb = mrd(ram, de); de++;
+            uint8_t A = (uint8_t)((mrd(ram, iy + 0) << 3) + Bb);
+            A = (uint8_t)(A - 0x20u);
+            mwr(ram, slot, A);
+            if (Cs & 0x40u) {
+                slot++; mwr(ram, slot, mrd(ram, IXB + 29));
+                mwr(ram, IXB + 29, (uint8_t)(mrd(ram, IXB + 29) + 1));
+                if (Cs & 0x20u) mwr(ram, IXB + 29, (uint8_t)(mrd(ram, IXB + 29) + 1));
+            }
+        }
+        if (--B == 0) break;                       /* 0x9663 DJNZ */
+    }
+    if (Cs & 0x80u) { mwr(ram, 0xE152u, mrd(ram, 0xE151u)); mwr(ram, 0xE150u, 1); }
+    *de_out = de;
+    return ret_A;
+}
+
+/* sub 0x95C0: setup de una columna (entrada IY del bloque E2E0). `c` = tile
+ * base. Devuelve el puntero de programa avanzado. */
+static uint16_t rb_setup_col(uint8_t *ram, uint16_t HL, uint16_t iy, uint8_t E, uint8_t c)
+{
+    mwr(ram, iy + 0, (uint8_t)(mrd(ram, HL) + c));
+    if (E & 0x08u) {                               /* BIT 3,E */
+        mwr(ram, iy + 0, mrd(ram, iy + 0) | 0x40u);
+        HL++; mwr(ram, iy + 1, mrd(ram, HL));
+    }
+    HL++;                                          /* 0x95D2 */
+    uint16_t de = mrd16(ram, HL); HL = (uint16_t)(HL + 2);
+    if ((mrd(ram, iy + 0) & 0x40u) == 0) {         /* BIT 6,(IY+0) */
+        uint8_t A = mrd(ram, de); de++;
+        if (A == 0) A = rb_spawn(ram, de, iy, &de); /* CALL Z 0x95ED */
+        mwr(ram, iy + 1, A);
+    }
+    mwr(ram, iy + 2, de & 0xFFu); mwr(ram, iy + 3, (de >> 8) & 0xFFu);
+    return HL;
+}
+
+/* sub 0x95A8: COMMAND HANDLER del stream del mapa. Programa N columnas del
+ * bloque E2E0 (selector + tile-base + ptr) y dispara spawns de objetos. `hl`
+ * = puntero al comando (ROM), `c` = tile base. Validado byte-exacto vs el
+ * estado RAM completo de openMSX (incluye el spawn 0x9B22 en 0xE620). */
+void z_map_command(uint8_t *ram, uint16_t hl, uint8_t c)
+{
+    uint8_t B = mrd(ram, hl); hl++;
+    do {
+        uint8_t A = (uint8_t)((mrd(ram, hl) & 0xF7u) << 2);   /* RES 3; *4 */
+        uint16_t iy = (uint16_t)(0xE2E0u + A);
+        uint8_t E = mrd(ram, hl); hl++;
+        hl = rb_setup_col(ram, hl, iy, E, c);
+    } while (--B);
+}
+
 /* sub 0x9888-0x9A67: REBUILD completo de una fila del scroll. Prólogo (arma
  * E2AE/E2B0/E2B2 desde 0xE702 + resetea IX/E71A), driver loop (4 entradas de
  * 0xE2C0), fetch (0x99D2) y expansor (z_map_expand). `ram` = RAM en 0xE000

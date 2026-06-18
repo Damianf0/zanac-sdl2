@@ -31,5 +31,10 @@ void z_map_expand(uint8_t *ram);
  * Validado byte-exacto vs estado RAM completo de openMSX. */
 void z_map_rebuild(uint8_t *ram);
 
+/* sub 0x95A8: command handler del stream del mapa — programa columnas del
+ * bloque E2E0 y dispara spawns de objetos (tabla 0xE620). `hl` = puntero al
+ * comando (ROM), `c` = tile base. Validado byte-exacto vs RAM de openMSX. */
+void z_map_command(uint8_t *ram, uint16_t hl, uint8_t c);
+
 #endif
 

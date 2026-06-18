@@ -188,6 +188,35 @@ def main():
     results.append(check('rebuild completo del scroll (sub 0x9888, RAM vs openMSX)',
                          t_maprebuild))
 
+    # --- command handler + spawn del mapa (sub 0x95A8) vs RAM de openMSX ------
+    # ZANAC_MAPCMD carga la RAM capturada en la entrada de 0x95A8 (cmd_before)
+    # con HL/C reales y debe reproducir EXACTAMENTE la RAM al RET: las columnas
+    # programadas en E2E0 + los objetos spawneados en la tabla 0xE620 (este
+    # caso SI dispara el spawn 0x9B22). Es la compuerta de generación del mapa.
+    def t_mapcmd():
+        meta = {}
+        for line in open(os.path.join(FIX, 'cmd_meta.txt')):
+            if '=' in line:
+                k, v = line.strip().split('=', 1); meta[k] = v
+        out = os.path.join(tempfile.gettempdir(), 'zmapcmd.bin')
+        env = dict(os.environ, ZANAC_MAPCMD=out,
+                   ZANAC_MC_IN=os.path.join(FIX, 'cmd_before.bin'),
+                   ZANAC_MC_HL=meta['HL'], ZANAC_MC_C=meta['C'])
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        ref = open(os.path.join(FIX, 'cmd_after.bin'), 'rb').read()
+        bad = [i for i in range(len(ref)) if got[i] != ref[i]]
+        if bad:
+            return ['%d/%d bytes de RAM difieren (primero 0x%04X)'
+                    % (len(bad), len(ref), 0xE000 + bad[0])]
+        return []
+    results.append(check('command handler + spawn del mapa (sub 0x95A8, RAM vs openMSX)',
+                         t_mapcmd))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 
