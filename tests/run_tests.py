@@ -88,6 +88,29 @@ def main():
     results.append(check('gráficos del título (patrones+sprites+color vs openMSX)',
                          t_titlegfx))
 
+    # --- blit del scroll (sub_9A80): buffer del mapa → name table vs openMSX -
+    # ZANAC_BLIT corre z_blit_playfield sobre un buffer real capturado de
+    # openMSX (blit_buf.bin) con la posición de scroll real (blit_start) y
+    # debe reproducir el playfield (24×24) de la name table (blit_nt.bin).
+    def t_blit():
+        out = os.path.join(tempfile.gettempdir(), 'zblit.bin')
+        start = open(os.path.join(FIX, 'blit_start.txt')).read().strip()
+        env = dict(os.environ, ZANAC_BLIT=out,
+                   ZANAC_BLITBUF=os.path.join(FIX, 'blit_buf.bin'),
+                   ZANAC_BLITSTART=start)
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        ref = open(os.path.join(FIX, 'blit_nt.bin'), 'rb').read()
+        bad = sum(1 for row in range(24) for col in range(24)
+                  if got[row*32+col] != ref[row*32+col])
+        return [] if not bad else ['%d/576 celdas del playfield difieren' % bad]
+    results.append(check('blit del scroll (sub_9A80, playfield vs openMSX)',
+                         t_blit))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 

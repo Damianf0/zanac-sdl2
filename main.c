@@ -164,6 +164,24 @@ int main(int argc, char *argv[])
         if (dc) { int r = decomp_harness(dc); free(rom); return r; }
         const char *tg = getenv("ZANAC_TITLEGFX");
         if (tg) { int r = titlegfx_harness(tg); free(rom); return r; }
+        /* ZANAC_BLIT=out.bin + ZANAC_BLITBUF=buf.bin + ZANAC_BLITSTART=N:
+         * corre z_blit_playfield sobre el buffer dado y vuelca la name table
+         * (768B). Valida el blit del scroll contra openMSX. */
+        const char *bl = getenv("ZANAC_BLIT");
+        if (bl) {
+            const char *bf = getenv("ZANAC_BLITBUF");
+            int start = getenv("ZANAC_BLITSTART") ? atoi(getenv("ZANAC_BLITSTART")) : 0;
+            uint8_t buf[24*24], nt[768];
+            FILE *bi = bf ? fopen(bf, "rb") : NULL;
+            if (!bi || fread(buf, 1, sizeof buf, bi) != sizeof buf) { free(rom); return 1; }
+            fclose(bi);
+            memset(nt, 0, sizeof nt);
+            z_blit_playfield(buf, start, nt);
+            FILE *o = fopen(bl, "wb");
+            if (o) { fwrite(nt, 1, sizeof nt, o); fclose(o); }
+            printf("ZANAC_BLIT -> %s (start=%d)\n", bl, start);
+            free(rom); return 0;
+        }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }

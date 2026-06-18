@@ -25,6 +25,19 @@ static uint8_t rb(uint16_t a)
 }
 static int cnt256(uint8_t x) { return x ? x : 256; }
 
+/* sub_9A80: blit del scroll. Copia el buffer circular del mapa (24 filas ×
+ * 24 cols, en 0xE800) al playfield de la name table (32 de ancho), empezando
+ * por la fila `start` (= (0xE715 - 0xE800)/24, la posición de scroll) y
+ * envolviendo cada 24 filas. Validado 24/24 vs openMSX. */
+void z_blit_playfield(const uint8_t *buf, int start, uint8_t *nt /* 768B, 32-wide */)
+{
+    for (int row = 0; row < 24; row++) {
+        const uint8_t *src = buf + ((start + row) % 24) * 24;
+        uint8_t *dst = nt + row * 32;
+        for (int col = 0; col < 24; col++) dst[col] = src[col];
+    }
+}
+
 /* sub_5C10: copia un stream terminado en 0x00 desde ROM[src] vía emit().
  * (textos de la name table: créditos, HUD). Devuelve el src final. */
 uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx)

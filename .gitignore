@@ -27,3 +27,7 @@ probe_mapbuf_out.txt
 probe_mapfill_out.txt
 probe_rst20_out.txt
 dump_ram_out.txt
+bl_out.bin
+blit_buf.bin
+blit_nt.bin
+blit_state.txt

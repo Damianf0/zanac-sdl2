@@ -170,11 +170,20 @@ FORMATO DE MAPA DECODIFICADO (2026-06-18, probe_rst20/dump_ram):
   siguiente al llegar al borde (DCOMPR).
 - Punteros del scroll: 0xE71A=dest buffer (0xEA40), 0xE715=pos en buffer.
 
-PENDIENTE (implementación de Fase 2): ubicar cómo se inicializa la tabla de
-segmentos 0xE2AC por nivel (la lista está en ROM), la variable de posición
-de scroll y su ritmo, y portar fill (0x99F6) + shift (0x9A66) + blit
-(0x9A80). Validar la name table frame a frame vs openMSX. (El descompresor
-z_decompress NO se usa para el mapa — el mapa es raw; sí para tiles/título.)
+- **BLIT (sub_9A80) PORTADO Y VALIDADO ✅ (2026-06-18)** — `z_blit_playfield`
+  en gfx.c: `name_table[fila] = buffer[(start+fila) mod 24]` (24 cols),
+  donde start = (0xE715-0xE800)/24 = la posición de scroll en el buffer
+  circular de 24 filas. Validado **24/24 filas byte-exacto** contra un frame
+  real de openMSX (tests/fixtures/blit_buf.bin + blit_nt.bin, suite 3/3).
+  Hallazgo: el texto "ROUND 1" del intro de nivel es un overlay aparte
+  (copia literal, como los títulos), no parte del blit.
+
+PENDIENTE (implementación de Fase 2): el FILL (0x99F6) + SHIFT (0x9A66) que
+mantienen el buffer 0xE800 — ubicar la init de la tabla de segmentos 0xE2AC
+por nivel (lista en ROM) y el ritmo/avance de la posición de scroll. Con eso
++ el blit ya porteado, el scroll queda andando. Validar frame a frame.
+(El descompresor z_decompress NO se usa para el mapa — el mapa es raw; sí
+para tiles/título.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
