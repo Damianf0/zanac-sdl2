@@ -248,10 +248,30 @@ DETALLES CONCRETOS DEL VM (2026-06-18, para portar la próxima sesión):
 - **Dispatcher 0x94D1**: si E702!=E706 → JP 0x97E3 (avanza buffer 1 fila +
   rebuild 0x9888 + RET). Si == → A=(E704)&0x0F; CALL 0x5C2E (salto por tabla).
 - **0x5C2E** = primitiva "JP tabla_inline[A]" (EX(SP),HL; A*2; indexa; RET).
-- **Tabla de handlers @ 0x94EB** (16 words): [0]97A8 [1]97B3 [2]9505 [3]9537
-  [4]956C [5]95A0 [6]9678 [7]9680 [8]9699 [9]96DE [10]96E5 [11]9742 [12]977D
-  (13-15 = datos). Cada handler lee operandos del script (E704), hace su cosa
-  (programar columnas E2C0/E2E0 vía z_map_command, etc.) y JP 0x97D5.
+- **Tabla de handlers @ 0x94EB** (opcode = byte&0x0F). Disasm leído de cada uno
+  (lo que toca + bytes de operando que consume del script; todos terminan en
+  JP 0x97D5 salvo nota):
+  - [0]0x97A8 SONIDO/control: (E12D)=byte; si bit2 cae en [1]. ~1 byte.
+  - [1]0x97B3 SPAWN objetos: B=cnt; B× spawn en 0xE620 (0x97BC, slot 0x9B22,
+    escribe 0x45+3B). 1+3*B bytes.
+  - [2]0x9505 MAPA: B=cnt; B×[selector+pos+IY1+ptr2] arma entradas E2C0
+    (timers=1). 1+5*B bytes.
+  - [3]0x9537 MAPA: B=cnt; mueve/copia entradas E2 (LDI×7) entre slots. var.
+  - [4]0x956C MAPA: como [2] pero (IY+0)+=pos (suma). 1+5*B bytes.
+  - [5]0x95A0 MAPA: C=0; CALL z_map_command (programa columnas E2E0 + spawn).
+  - [6]0x9678 MAPA: (E71C)=byte [= índice de segmento, alimenta el fetch]. 1B.
+  - [7]0x9680 MAPA: B=cnt; B× marca entrada E2C0 = 0x80 (libera). 1+B bytes.
+  - [8]0x9699 SPRITE/SCORE: (E720)=word; setup E180/E102/E15E; render score
+    (0x5BFC/0x42F8). 2 bytes (+efectos VRAM/sprite, no buffer).
+  - [9]0x96DE SALTO de sección: HL=word; JP 0x9433 (re-init con nuevo script +
+    CALL 0x4C68). 2 bytes. NO vuelve por 0x97D5 (redirige).
+  - [10]0x96E5 VRAM: (IX+35)=byte; carga patrones a VRAM (0x970A/0x0053). 1B.
+  - [11]0x9742 MAPA+param: LDIR 4B→E155; tabla 0x976C→E153; CALL 0x95C0 (arma
+    columna 0 de E2E0). 4 bytes (+lo que lee 0x95C0).
+  - [12]0x977D DIFICULTAD/sonido: acumula en E132/E12E/E12D. 1 byte.
+  Handlers de MAPA (afectan buffer): 2,3,4,5,6,7,11. El resto consume operandos
+  pero sus efectos (E1xx/sprite/VRAM/score) NO tocan el buffer 0xE800 — al
+  validar el fill comparar SOLO 0xE800-0xEA3F + bloques E2C0/E2E0.
 - **0x97D5** = fetch: lee [trigger:word] siguiente → E706, E704=ptr; JP 0x94D1.
 - Oráculo de validación guardado: tests/fixtures/lf_before.bin (RAM en 0x9405)
   + lf_after.bin (RAM tras 0x946E, buffer lleno). Portar init+VM+handlers, correr

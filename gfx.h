@@ -33,8 +33,15 @@ void z_map_rebuild(uint8_t *ram);
 
 /* sub 0x95A8: command handler del stream del mapa — programa columnas del
  * bloque E2E0 y dispara spawns de objetos (tabla 0xE620). `hl` = puntero al
- * comando (ROM), `c` = tile base. Validado byte-exacto vs RAM de openMSX. */
-void z_map_command(uint8_t *ram, uint16_t hl, uint8_t c);
+ * comando (ROM), `c` = tile base. Devuelve el ptr avanzado. Validado. */
+uint16_t z_map_command(uint8_t *ram, uint16_t hl, uint8_t c);
+
+/* VM de script de nivel. z_level_init: resetea bloques + corre 24 pasos para
+ * llenar el buffer 0xE800 con el mapa inicial (validado 0/576 vs openMSX).
+ * z_vm_step: un paso de scroll (avanza E702, ejecuta comandos vencidos, avanza
+ * una fila del buffer + rebuild). `ram` = RAM en 0xE000 (>=0xC00). */
+void z_level_init(uint8_t *ram, uint16_t script_ptr);
+void z_vm_step(uint8_t *ram);
 
 #endif
 

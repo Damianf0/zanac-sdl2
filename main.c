@@ -271,6 +271,20 @@ int main(int argc, char *argv[])
             printf("ZANAC_MAPCMD -> %s\n", mc);
             free(rom); return 0;
         }
+        /* ZANAC_LEVELFILL=out.bin: corre z_level_init (nivel 1, script 0xA751)
+         * desde RAM en cero y vuelca la RAM con el buffer 0xE800 lleno. Valida
+         * el VM completo (init + 24 pasos) contra openMSX. */
+        const char *lf = getenv("ZANAC_LEVELFILL");
+        if (lf) {
+            uint8_t ram[0xC00];
+            memset(ram, 0, sizeof ram);
+            ram[0xE701 - 0xE000] = 0x01; ram[0xE712 - 0xE000] = 0x34;
+            z_level_init(ram, 0xA751u);
+            FILE *o = fopen(lf, "wb");
+            if (o) { fwrite(ram, 1, sizeof ram, o); fclose(o); }
+            printf("ZANAC_LEVELFILL -> %s\n", lf);
+            free(rom); return 0;
+        }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }
@@ -290,6 +304,48 @@ int main(int argc, char *argv[])
         const char *shot = getenv("ZANAC_SHOT");
         if (shot) { hal_vdp_present(); hal_screenshot(shot);
                     printf("ZANAC_SHOT -> %s\n", shot); hal_quit(); free(rom); return 0; }
+    }
+
+    /* ===== MODO PLAYFIELD: scroll del nivel 1 generado por el VM validado =====
+     * ZANAC_PLAY=1 (loop interactivo) o ZANAC_SHOTPLAY=out.bmp (screenshot).
+     * Corre z_level_init (llena el buffer con el mapa) y, por frame, avanza el
+     * scroll (z_vm_step) + bliteа el buffer circular a la name table. Usa los
+     * gráficos de tiles ya cargados (terreno 0x24-0x27 byte-exacto vs gameplay). */
+    {
+        const char *play = getenv("ZANAC_PLAY");
+        const char *shotp = getenv("ZANAC_SHOTPLAY");
+        if (play || shotp) {
+            static uint8_t ram[0xC00];
+            memset(ram, 0, sizeof ram);
+            ram[0xE701 - 0xE000] = 0x01; ram[0xE712 - 0xE000] = 0x34;
+            z_level_init(ram, 0xA751u);
+            uint8_t nt[768];
+            #define BLIT_NT() do { \
+                uint16_t e715 = ram[0xE715-0xE000] | (ram[0xE716-0xE000]<<8); \
+                int start = ((e715 - 0xE800) / 24) % 24; if (start < 0) start += 24; \
+                memset(nt, 0x20u, sizeof nt); /* HUD (cols 24-31) en blanco */ \
+                z_blit_playfield(&ram[0xE800-0xE000], start, nt); \
+                for (uint16_t a = 0; a < 768; a++) hal_vdp_write_vram(0x3800u + a, nt[a]); \
+            } while (0)
+            if (getenv("ZANAC_PLAYSTEPS")) {
+                int n = atoi(getenv("ZANAC_PLAYSTEPS"));
+                for (int i = 0; i < n; i++) z_vm_step(ram);
+            }
+            BLIT_NT();
+            if (shotp) { hal_vdp_present(); hal_screenshot(shotp);
+                         printf("ZANAC_SHOTPLAY -> %s\n", shotp); hal_quit(); free(rom); return 0; }
+            printf("Zanac — PLAYFIELD nivel 1 (mapa generado por el VM, validado vs openMSX). Esc sale.\n");
+            int pf = getenv("CASTLE_FAST") ? 240 : -1;
+            int sub = 0;
+            while (hal_poll_events()) {
+                /* avance de scroll: un paso del VM cada ~6 frames (≈8px/paso) */
+                if (++sub >= 6) { sub = 0; z_vm_step(ram); BLIT_NT(); }
+                hal_vdp_present();
+                hal_wait_vsync();
+                if (pf > 0 && --pf == 0) break;
+            }
+            hal_quit(); free(rom); return 0;
+        }
     }
 
     printf("Zanac — pantalla de título (gráficos validados vs openMSX). Esc para salir.\n");

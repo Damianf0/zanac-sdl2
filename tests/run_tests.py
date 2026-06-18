@@ -217,6 +217,32 @@ def main():
     results.append(check('command handler + spawn del mapa (sub 0x95A8, RAM vs openMSX)',
                          t_mapcmd))
 
+    # --- VM de nivel: fill inicial del playfield (0x9405+0x946E) vs openMSX ---
+    # ZANAC_LEVELFILL corre z_level_init (nivel 1) desde RAM en cero y debe
+    # reproducir el buffer del mapa (0xE800-0xEA3F) + bloques de control
+    # (E2C0-E2FF) capturados tras el fill de 24 filas (lf_after.bin). Valida
+    # el VM completo (init + dispatcher + 13 handlers + fetch + rebuild) SIN
+    # usar datos de captura como semilla (solo 2 constantes de arranque).
+    def t_levelfill():
+        out = os.path.join(tempfile.gettempdir(), 'zlevelfill.bin')
+        env = dict(os.environ, ZANAC_LEVELFILL=out)
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        ref = open(os.path.join(FIX, 'lf_after.bin'), 'rb').read()
+        errs = []
+        for name, s, e in (('buffer 0xE800', 0xE800, 0xEA40),
+                           ('bloques E2C0', 0xE2C0, 0xE300)):
+            bad = sum(1 for i in range(s - 0xE000, e - 0xE000) if got[i] != ref[i])
+            if bad:
+                errs.append('%s: %d/%d bytes difieren' % (name, bad, e - s))
+        return errs
+    results.append(check('VM de nivel: fill del playfield (0x9405+VM, buffer vs openMSX)',
+                         t_levelfill))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 

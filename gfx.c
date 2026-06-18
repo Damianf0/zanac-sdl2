@@ -327,7 +327,7 @@ static uint16_t rb_setup_col(uint8_t *ram, uint16_t HL, uint16_t iy, uint8_t E, 
  * bloque E2E0 (selector + tile-base + ptr) y dispara spawns de objetos. `hl`
  * = puntero al comando (ROM), `c` = tile base. Validado byte-exacto vs el
  * estado RAM completo de openMSX (incluye el spawn 0x9B22 en 0xE620). */
-void z_map_command(uint8_t *ram, uint16_t hl, uint8_t c)
+uint16_t z_map_command(uint8_t *ram, uint16_t hl, uint8_t c)
 {
     uint8_t B = mrd(ram, hl); hl++;
     do {
@@ -336,6 +336,7 @@ void z_map_command(uint8_t *ram, uint16_t hl, uint8_t c)
         uint8_t E = mrd(ram, hl); hl++;
         hl = rb_setup_col(ram, hl, iy, E, c);
     } while (--B);
+    return hl;
 }
 
 /* sub 0x9888-0x9A67: REBUILD completo de una fila del scroll. Prólogo (arma
@@ -370,6 +371,127 @@ void z_map_rebuild(uint8_t *ram)
 
     /* expansor 0x99F7-0x9A67 (reusa la rutina ya validada) */
     z_map_expand(ram);
+}
+
+/* ==========================================================================
+ * VM DE SCRIPT DE NIVEL (0x9405 init + 0x946E fill + dispatcher 0x94D1 +
+ * fetch 0x97D5 + avance 0x97E3 + 13 handlers @ tabla 0x94EB). Genera el mapa
+ * del nivel a medida que el scroll avanza. Validado byte-exacto: init + 24
+ * pasos reproducen el buffer 0xE800 del nivel 1 (tools/sim_vm.py, 0/576).
+ * Los handlers que NO tocan el mapa (sonido/sprite/score/dificultad) sólo
+ * consumen sus operandos aquí; sus efectos externos (E1xx/VRAM) se portarán
+ * con sus subsistemas. El handler 9 (salto de sección) queda pendiente.
+ * ========================================================================== */
+
+/* h2/h4 (0x9505/0x956C): arman N entradas del bloque E2C0. add=1 -> suma a +0 */
+static uint16_t vm_h_e2c0(uint8_t *ram, uint16_t hl, int add)
+{
+    uint8_t B = mrd(ram, hl++);
+    for (uint8_t i = 0; i < B; i++) {
+        uint16_t iy = (uint16_t)(0xE2C0u + ((mrd(ram, hl++) << 3) & 0xFFu));
+        if (add) mwr(ram, iy + 0, (uint8_t)(mrd(ram, iy + 0) + mrd(ram, hl++)));
+        else     mwr(ram, iy + 0, mrd(ram, hl++));
+        mwr(ram, iy + 1, mrd(ram, hl++));
+        mwr(ram, iy + 2, mrd(ram, hl++));
+        mwr(ram, iy + 3, mrd(ram, hl++));
+        mwr(ram, iy + 6, 1); mwr(ram, iy + 7, 1);
+    }
+    return hl;
+}
+
+/* h1 (0x97B3): spawnea B objetos (0x45 + 3 bytes) en la tabla 0xE620. */
+static uint16_t vm_h_spawn(uint8_t *ram, uint16_t hl)
+{
+    uint8_t B = mrd(ram, hl++);
+    for (uint8_t i = 0; i < B; i++) {
+        uint16_t slot;
+        if (rb_slot_finder(ram, &slot)) { hl = (uint16_t)(hl + 3); }
+        else { mwr(ram, slot++, 0x45u); for (int k = 0; k < 3; k++) mwr(ram, slot++, mrd(ram, hl++)); }
+    }
+    return hl;
+}
+
+/* Despacha un opcode del script. Devuelve el ptr avanzado (o 0xFFFF si el
+ * handler no está portado / es salto de sección). */
+static uint16_t vm_handler(uint8_t *ram, uint8_t idx, uint16_t hl)
+{
+    switch (idx) {
+    case 0: {                                   /* 0x97A8 sonido (E12D) */
+        uint8_t a = mrd(ram, hl++); mwr(ram, 0xE12Du, a);
+        return (a & 0x04u) ? vm_h_spawn(ram, hl) : hl;   /* bit2 -> cae en h1 */
+    }
+    case 1:  return vm_h_spawn(ram, hl);        /* 0x97B3 */
+    case 2:  return vm_h_e2c0(ram, hl, 0);      /* 0x9505 */
+    case 3: {                                   /* 0x9537 mueve entradas E2 */
+        uint8_t B = mrd(ram, hl++);
+        for (uint8_t i = 0; i < B; i++) {
+            uint16_t de = (uint16_t)(0xE200u | (((mrd(ram, hl++) << 3) + 0xC0u) & 0xFFu));
+            uint16_t sh = (uint16_t)(0xE200u | (((mrd(ram, hl++) << 3) + 0xC0u) & 0xFFu));
+            mwr(ram, de++, mrd(ram, sh)); mwr(ram, sh++, 0x80u);
+            for (int k = 0; k < 7; k++) mwr(ram, de++, mrd(ram, sh++));
+        }
+        return hl;
+    }
+    case 4:  return vm_h_e2c0(ram, hl, 1);      /* 0x956C */
+    case 5:  return z_map_command(ram, hl, 0);  /* 0x95A0 columnas E2E0 */
+    case 6:  mwr(ram, 0xE71Cu, mrd(ram, hl)); return (uint16_t)(hl + 1);  /* 0x9678 */
+    case 7: {                                   /* 0x9680 libera entradas E2C0 */
+        uint8_t B = mrd(ram, hl++);
+        for (uint8_t i = 0; i < B; i++) mwr(ram, (uint16_t)(0xE2C0u + ((mrd(ram, hl++) << 3) & 0xFFu)), 0x80u);
+        return hl;
+    }
+    case 8:                                     /* 0x9699 sprite/score: 2 operandos */
+        mwr16(ram, 0xE720u, mrd16(ram, hl)); mwr(ram, IXB + 29, 0); return (uint16_t)(hl + 2);
+    case 10: mwr(ram, IXB + 35, mrd(ram, hl)); return (uint16_t)(hl + 1);  /* 0x96E5 VRAM */
+    case 11: {                                  /* 0x9742 param + columna 0 */
+        for (int i = 0; i < 4; i++) mwr(ram, (uint16_t)(0xE155u + i), mrd(ram, hl++));
+        mwr(ram, 0xE154u, 0);
+        mwr(ram, 0xE153u, rb((uint16_t)(0x976Cu + (mrd(ram, 0xE157u) & 0x1Fu))));
+        return rb_setup_col(ram, hl, 0xE2E0u, 0, 0);
+    }
+    case 12: return (uint16_t)(hl + 1);         /* 0x977D dificultad: 1 operando */
+    default: return 0xFFFFu;                     /* 9 (salto de sección) u otro: no portado */
+    }
+}
+
+/* Un paso del scroll (0x94C3 -> 0x94D1): INC E702; ejecuta los comandos del
+ * script vencidos; cuando el próximo no está vencido, avanza el buffer una
+ * fila (0x97E3) y hace rebuild. */
+void z_vm_step(uint8_t *ram)
+{
+    mwr16(ram, 0xE702u, (uint16_t)(mrd16(ram, 0xE702u) + 1));
+    for (;;) {
+        if (mrd16(ram, 0xE706u) != mrd16(ram, 0xE702u)) {   /* avance de fila 0x97E3 */
+            uint8_t c = (uint8_t)(mrd(ram, IXB + 20) - 1);
+            uint16_t hl;
+            if (c & 0x80u) { c = 0x17u; hl = 0xEA28u; }
+            else hl = (uint16_t)(mrd16(ram, 0xE715u) + 0xFFE8u);
+            mwr(ram, IXB + 20, c); mwr16(ram, 0xE715u, hl);
+            z_map_rebuild(ram);
+            return;
+        }
+        uint16_t hl = mrd16(ram, 0xE704u);          /* opcode vencido 0x94DE */
+        uint8_t op = mrd(ram, hl++); mwr(ram, IXB + 15, op);
+        hl = vm_handler(ram, (uint8_t)(op & 0x0Fu), hl);
+        if (hl == 0xFFFFu) return;                  /* handler no portado: corta */
+        uint16_t trig = mrd16(ram, hl);             /* fetch siguiente 0x97D5 */
+        mwr16(ram, 0xE704u, (uint16_t)(hl + 2)); mwr16(ram, 0xE706u, trig);
+    }
+}
+
+/* Init de nivel (0x9405-0x9432): resetea bloques E2C0/E2E0 a 0x80, fija el
+ * puntero de script y los triggers; luego corre 24 pasos (0x946E) para llenar
+ * el buffer con las filas iniciales del mapa. `ram` debe venir en cero salvo
+ * E701=0x01 y E712=0x34 (constantes de arranque de nivel). */
+void z_level_init(uint8_t *ram, uint16_t script_ptr)
+{
+    for (int k = 0; k < 16; k++) mwr(ram, (uint16_t)(0xE2C0u + k * 4), 0x80u);
+    uint16_t de = rb((script_ptr)) | (rb((uint16_t)(script_ptr + 1)) << 8);
+    mwr16(ram, 0xE706u, de);
+    mwr16(ram, 0xE702u, (uint16_t)(de - 1));
+    mwr16(ram, 0xE704u, (uint16_t)(script_ptr + 2));
+    mwr(ram, IXB + 0, mrd(ram, IXB + 0) & (uint8_t)~0x01u);
+    for (int i = 0; i < 0x18; i++) z_vm_step(ram);   /* 0x946E: llena 24 filas */
 }
 
 /* sub_5C10: copia un stream terminado en 0x00 desde ROM[src] vía emit().
