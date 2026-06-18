@@ -103,11 +103,19 @@ Avance (2026-06-17):
   **byte-idéntica** en patrones (0x0000-17FF), sprites (0x1800-1FFF) y color
   (0x2000-37FF) = 14336 bytes. Confirmado: los 3 tercios son idénticos (el
   descompresor reescribe la misma data). Suite Zanac 2/2.
-- PENDIENTE (último de la name table): la NAME TABLE (0x3800-3AFF, el HUD
-  "SCORE/TOP" + tiles de logo) se arma con 2 rutas: copia literal 0x00-term
-  (L5C10, textos desde 5A2A...) y la copia de filas de tiles desde la tabla
-  ROM 0x4827 (stride 0x19, rutina 0x5BC0 vía L5BFC). Portar ambas + su
-  orquestación → título COMPLETO byte-idéntico.
+- **NAME TABLE: texto porteado (689/768) ✅ (2026-06-18)** — copia literal
+  L5C10 portada (`z_copy_literal` en gfx.c) + los 8 textos de crédito/HUD
+  capturados (trace_nt2.tcl): SCORE, TOP, "GAME DESIGN BY COMPILE",
+  "PRODUCED BY AAI", "PRESENTED BY PONY INC.", "COPYRIGHT @ 1986 PONY INC.".
+  `load_title_nametable()`: base de espacios + los 8 textos.
+- PENDIENTE (79 bytes del título): el FONDO del logo (tiles 0xB0-0xDE en
+  0x38A8/0x38CA/0x38E9/0x3908/0x3969) y los dígitos del SCORE (0 / 10000).
+  El juego los arma por una vía aparte: el clear es FILVRM (0x800 desde
+  0x3800), y el contenido base lo escribe el loop LDIRVM del BIOS (pc 0x02A5)
+  — el rastreo a nivel registro en internals del BIOS es turbio. Quedó
+  trazada toda la tubería; falta ubicar la fuente base + el render de score.
+  Decisión: no es bloqueante (es el logo/HUD del título); se puede cerrar
+  después o saltar a Fase 2 (scroll, el juego real).
 - INFRA: z80dis.py ahora acepta `--seed 0xADDR` para entradas alcanzadas por
   saltos indirectos/tablas (como el descompresor).
 

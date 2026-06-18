@@ -93,6 +93,25 @@ static void load_title_gfx(void)
         z_decompress(0x5EF0u, emit_vram, &c); }                 /* logo col  */
 }
 
+/* Name table: base de espacios + los 8 textos (créditos/HUD) por copia
+ * literal 0x00-term (L5C10). Dest/src capturados de la orquestación real
+ * (trace_nt2.tcl). Pendiente del byte-exacto: el fondo del LOGO (tiles
+ * 0xB0-0xDE) y los dígitos del SCORE, que el juego arma por una vía aparte
+ * (copia base por LDIRVM/FILVRM del BIOS + render de score). */
+static const struct { uint16_t dst, src; } title_text[8] = {
+    {0x3803, 0x5A2A}, {0x3811, 0x5A36}, {0x39E3, 0x5ACE}, {0x3A03, 0x5AED},
+    {0x3A23, 0x5B08}, {0x3A43, 0x5B29}, {0x3A8E, 0x5B4A}, {0x3AAE, 0x5B54},
+};
+static void load_title_nametable(void)
+{
+    VramCtx c;
+    for (uint16_t a = 0x3800u; a < 0x3B00u; a++) hal_vdp_write_vram(a, 0x20u);
+    for (int i = 0; i < 8; i++) {
+        c.addr = title_text[i].dst;
+        z_copy_literal(title_text[i].src, emit_vram, &c);
+    }
+}
+
 /* Harness: ZANAC_TITLEGFX=out.bin → limpia VRAM, carga los gráficos del
  * título y vuelca VRAM 0x0000-0x37FF (patrones+sprites+color) para comparar
  * contra tests/fixtures/vram_title.bin. */
@@ -100,9 +119,10 @@ static int titlegfx_harness(const char *out)
 {
     FILE *f = fopen(out, "wb");
     if (!f) return 1;
-    for (uint16_t a = 0; a < 0x3800u; a++) hal_vdp_write_vram(a, 0u);  /* clear */
+    for (uint16_t a = 0; a < 0x3B00u; a++) hal_vdp_write_vram(a, 0u);  /* clear */
     load_title_gfx();
-    for (uint16_t a = 0; a < 0x3800u; a++) {
+    load_title_nametable();
+    for (uint16_t a = 0; a < 0x3B00u; a++) {
         uint8_t b = hal_vdp_read_vram(a);
         fwrite(&b, 1, 1, f);
     }

@@ -13,3 +13,9 @@ trace_out_out.txt
 trace_entry_out.txt
 decomp_port.txt
 trace_orch_out.txt
+trace_nt_out.txt
+trace_nt2_out.txt
+trace_ldir_out.txt
+trace_ntwr_out.txt
+trace_ntsrc_out.txt
+tg.bin

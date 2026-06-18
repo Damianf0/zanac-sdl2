@@ -7,4 +7,8 @@
  * Devuelve el src final. Validado byte a byte vs openMSX. */
 uint16_t z_decompress(uint16_t src, void (*emit)(void *, uint8_t), void *ctx);
 
+/* sub_5C10: copia literal terminada en 0x00 desde ROM[src]. */
+uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx);
+
 #endif
+

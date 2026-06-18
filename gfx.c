@@ -25,6 +25,18 @@ static uint8_t rb(uint16_t a)
 }
 static int cnt256(uint8_t x) { return x ? x : 256; }
 
+/* sub_5C10: copia un stream terminado en 0x00 desde ROM[src] vía emit().
+ * (textos de la name table: créditos, HUD). Devuelve el src final. */
+uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx)
+{
+    for (;;) {
+        uint8_t b = rb(src++);
+        if (b == 0u) break;
+        emit(ctx, b);
+    }
+    return src;
+}
+
 /* Descomprime desde ROM[src]; cada byte de salida va por emit(ctx, byte).
  * Devuelve el src final (tras el comando FIN). */
 uint16_t z_decompress(uint16_t src, void (*emit)(void *, uint8_t), void *ctx)
