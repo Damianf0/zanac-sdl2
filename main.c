@@ -218,6 +218,22 @@ int main(int argc, char *argv[])
             printf("ZANAC_MAPEXPAND -> %s\n", me);
             free(rom); return 0;
         }
+        /* ZANAC_MAPREBUILD=out.bin + ZANAC_MR_IN=before.bin: carga la RAM
+         * capturada en la entrada de 0x9888, corre z_map_rebuild y vuelca la
+         * RAM resultante. Valida el rebuild completo del scroll vs openMSX. */
+        const char *mr = getenv("ZANAC_MAPREBUILD");
+        if (mr) {
+            const char *in = getenv("ZANAC_MR_IN");
+            uint8_t ram[0xC00];
+            FILE *bi = in ? fopen(in, "rb") : NULL;
+            if (!bi || fread(ram, 1, sizeof ram, bi) != sizeof ram) { free(rom); return 1; }
+            fclose(bi);
+            z_map_rebuild(ram);
+            FILE *o = fopen(mr, "wb");
+            if (o) { fwrite(ram, 1, sizeof ram, o); fclose(o); }
+            printf("ZANAC_MAPREBUILD -> %s\n", mr);
+            free(rom); return 0;
+        }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }

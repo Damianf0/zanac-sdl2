@@ -121,6 +121,154 @@ void z_map_expand(uint8_t *ram /* base 0xE000, >=0xC00 */)
     for (int i = 0; i < 0x18; i++) { mwr(ram, de++, mrd(ram, hl++)); }
 }
 
+static uint16_t mrd16(const uint8_t *ram, uint16_t a)
+{
+    return (uint16_t)(mrd(ram, a) | (mrd(ram, (uint16_t)(a + 1)) << 8));
+}
+static void mwr16(uint8_t *ram, uint16_t a, uint16_t v)
+{
+    mwr(ram, a, v & 0xFFu); mwr(ram, (uint16_t)(a + 1), (v >> 8) & 0xFFu);
+}
+
+#define IXB 0xE700u   /* base del bloque de control del scroll (IX) */
+
+/* 0x98F6: bucle de lectura del programa de columna (E2C0) hasta byte de
+ * timer no-cero/no-0xFF; 0xFF avanza la posición. Devuelve el ptr2 (IY+4/5). */
+static uint16_t rb_reload_98F6(uint8_t *ram, uint16_t iy, uint16_t HL)
+{
+    for (;;) {
+        uint8_t a7 = mrd(ram, HL); mwr(ram, iy + 7, a7); HL++;
+        mwr16(ram, iy + 2, HL);
+        uint8_t a6 = mrd(ram, HL); mwr(ram, iy + 6, a6); HL++;
+        uint16_t word = mrd16(ram, HL); HL += 2;
+        uint16_t de = HL; HL = word;
+        if (a6 == 0) continue;                       /* JR Z 0x98F6 */
+        if (a6 == 0xFFu) {                            /* 0x990F comando */
+            mwr(ram, iy + 0, (uint8_t)(mrd(ram, iy + 7) + mrd(ram, iy + 0)));
+            HL = (uint16_t)(de - 1); continue;
+        }
+        mwr16(ram, iy + 4, HL);                       /* 0x991E ptr2 */
+        return HL;
+    }
+}
+/* entra en 0x9901 (camino 0x9926: timer aún corriendo, recarga desde IY+2/3) */
+static void rb_reload_9901(uint8_t *ram, uint16_t iy, uint16_t HL)
+{
+    uint8_t a6 = mrd(ram, HL); mwr(ram, iy + 6, a6); HL++;
+    uint16_t word = mrd16(ram, HL); HL += 2;
+    uint16_t de = HL; HL = word;
+    if (a6 == 0) { rb_reload_98F6(ram, iy, HL); return; }
+    if (a6 == 0xFFu) {
+        mwr(ram, iy + 0, (uint8_t)(mrd(ram, iy + 7) + mrd(ram, iy + 0)));
+        rb_reload_98F6(ram, iy, (uint16_t)(de - 1)); return;
+    }
+    mwr16(ram, iy + 4, HL);
+}
+
+/* 0x9962 (X1): copia los `mode` tiles del ptr2 al staging DE (sumando
+ * tile-base 0x17/0x2E si bit7 de IY+1), avanza E71A, IX+25 e IY+0. */
+static void rb_x1(uint8_t *ram, uint16_t iy, uint8_t pos, uint16_t de)
+{
+    uint8_t C = pos;
+    mwr(ram, IXB + 24, pos);
+    uint16_t HL = mrd16(ram, iy + 4);
+    uint8_t cnt = mrd(ram, HL); HL++;
+    uint8_t mode = mrd(ram, HL); HL++;
+    if (mode != 0) {
+        if (mrd(ram, iy + 1) & 0x80u) {              /* BIT 7: suma tile-base */
+            uint8_t base = (mrd(ram, iy + 1) & 0x08u) ? 0x2Eu : 0x17u;
+            for (uint8_t i = 0; i < mode; i++) { mwr(ram, de++, (uint8_t)(mrd(ram, HL) + base)); HL++; }
+        } else {
+            for (uint8_t i = 0; i < mode; i++) { mwr(ram, de++, mrd(ram, HL)); HL++; }
+        }
+    }
+    mwr16(ram, 0xE71Au, de);                          /* 0x9995 */
+    mwr(ram, IXB + 25, (uint8_t)(mode + C));          /* 0x9999 */
+    mwr16(ram, iy + 4, HL);                           /* 0x999E */
+    mwr(ram, iy + 0, (uint8_t)(mrd(ram, iy + 0) + cnt));  /* 0x99A4 += count */
+    mwr(ram, IXB + 23, mrd(ram, iy + 1));             /* 0x99AC */
+}
+
+/* 0x992E: copia (pos - IX25) bytes del segmento ROM seleccionado por
+ * (IY+1)>>3&0x0E al staging, luego X1; o ajusta DE (0x99B5) si IX25>=pos. */
+static void rb_emit(uint8_t *ram, uint16_t iy)
+{
+    uint8_t pos = mrd(ram, iy + 0);
+    if (pos >= 0x28u) { mwr(ram, iy + 0, 0x80u); return; }   /* fin de columna */
+    uint8_t C = mrd(ram, IXB + 25);
+    uint16_t de;
+    if (C >= pos) {                                   /* 0x99B5 */
+        uint16_t HL = mrd16(ram, 0xE71Au);
+        uint8_t a = (uint8_t)(C - pos);
+        if (a != 0) {
+            a = (uint8_t)(((uint8_t)~a) + 1);         /* CPL; INC A */
+            HL = (uint16_t)(HL + (a | 0xFF00u));      /* ADD HL,DE (D=0xFF) */
+        }
+        de = HL;
+    } else {
+        uint8_t idx = (uint8_t)((mrd(ram, iy + 1) >> 3) & 0x0Eu);
+        uint16_t HL = (uint16_t)(mrd16(ram, 0xE2ACu + idx) + C);
+        uint8_t cnt = (uint8_t)(pos - C);
+        de = mrd16(ram, 0xE71Au);
+        for (uint8_t i = 0; i < cnt; i++) { mwr(ram, de++, mrd(ram, HL)); HL++; }
+    }
+    rb_x1(ram, iy, pos, de);
+}
+
+/* 0x98D4: procesa una entrada del bloque E2C0 (8B: pos+0/+1, ptr+2/+3,
+ * ptr2+4/+5, timer+6, timer2+7). */
+static void rb_driver_entry(uint8_t *ram, uint16_t iy)
+{
+    if (mrd(ram, iy + 0) == 0x80u) return;
+    uint8_t v6 = (uint8_t)(mrd(ram, iy + 6) - 1); mwr(ram, iy + 6, v6);  /* DEC (IY+6) */
+    if (v6 != 0) {                                    /* timer corriendo -> emit */
+        rb_emit(ram, iy); return;
+    }
+    uint8_t a7 = mrd(ram, iy + 7);
+    if (a7 == 0) {
+        rb_reload_9901(ram, iy, mrd16(ram, iy + 2));  /* 0x9926 */
+    } else {
+        uint8_t v7 = (uint8_t)(a7 - 1); mwr(ram, iy + 7, v7);
+        if (v7 != 0) rb_reload_9901(ram, iy, mrd16(ram, iy + 2));
+        else rb_reload_98F6(ram, iy, (uint16_t)(mrd16(ram, iy + 2) + 3));  /* 0x98ED */
+    }
+    rb_emit(ram, iy);
+}
+
+/* sub 0x9888-0x9A67: REBUILD completo de una fila del scroll. Prólogo (arma
+ * E2AE/E2B0/E2B2 desde 0xE702 + resetea IX/E71A), driver loop (4 entradas de
+ * 0xE2C0), fetch (0x99D2) y expansor (z_map_expand). `ram` = RAM en 0xE000
+ * (>= 0xC00 bytes). Validado byte-exacto vs el estado RAM completo de openMSX
+ * (caso sin comando 0x95A8 ni recarga 0x95ED ni spawn 0x9B22). */
+void z_map_rebuild(uint8_t *ram)
+{
+    /* prólogo 0x9888-0x98D2 */
+    uint8_t a = mrd(ram, 0xE702u) & 0x03u;
+    a = (uint8_t)((3u * a) << 3);
+    mwr16(ram, 0xE2AEu, (uint16_t)(0xA444u + a));
+    uint16_t de = (uint16_t)(((3u * (mrd(ram, 0xE702u) & 0x07u)) << 3) & 0xFFFFu);
+    mwr16(ram, 0xE2B0u, (uint16_t)(0xA4A4u + de));
+    mwr16(ram, 0xE2B2u, (uint16_t)(0xA564u + de));
+    mwr(ram, IXB + 23, mrd(ram, IXB + 28));
+    mwr(ram, IXB + 25, 0); mwr(ram, IXB + 24, 0);
+    mwr16(ram, 0xE71Au, 0xEA40u);
+
+    /* driver loop: 4 entradas de E2C0 (stride 8) */
+    for (int k = 0; k < 4; k++) rb_driver_entry(ram, (uint16_t)(0xE2C0u + k * 8));
+
+    /* fetch 0x99D2-0x99F5 */
+    uint8_t col = mrd(ram, IXB + 25);
+    if (col < 0x20u) {
+        uint16_t ptr = mrd16(ram, 0xE2ACu + (mrd(ram, IXB + 23) & 7u) * 2u);
+        uint16_t src = (uint16_t)(ptr + col);
+        uint16_t d = mrd16(ram, 0xE71Au);
+        for (uint16_t i = 0; i < (uint16_t)(0x20u - col); i++) mwr(ram, d++, rb((uint16_t)(src + i)));
+    }
+
+    /* expansor 0x99F7-0x9A67 (reusa la rutina ya validada) */
+    z_map_expand(ram);
+}
+
 /* sub_5C10: copia un stream terminado en 0x00 desde ROM[src] vía emit().
  * (textos de la name table: créditos, HUD). Devuelve el src final. */
 uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx)

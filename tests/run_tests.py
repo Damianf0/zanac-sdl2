@@ -164,6 +164,30 @@ def main():
     results.append(check('expansor de runs del scroll (sub 0x99FD, RAM vs openMSX)',
                          t_mapexpand))
 
+    # --- rebuild completo del scroll (sub 0x9888-0x9A67) vs RAM de openMSX ----
+    # ZANAC_MAPREBUILD carga la RAM (0xE000-0xEBFF) capturada en la entrada de
+    # 0x9888 (tick_before.bin) y debe reproducir EXACTAMENTE la RAM al RET
+    # (tick_after.bin): prólogo + driver loop (bloque E2C0) + fetch + expansor.
+    # Tick sin comando 0x95A8 / recarga 0x95ED / spawn 0x9B22 (complex_fired=0).
+    def t_maprebuild():
+        out = os.path.join(tempfile.gettempdir(), 'zrebuild.bin')
+        env = dict(os.environ, ZANAC_MAPREBUILD=out,
+                   ZANAC_MR_IN=os.path.join(FIX, 'tick_before.bin'))
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        ref = open(os.path.join(FIX, 'tick_after.bin'), 'rb').read()
+        bad = [i for i in range(len(ref)) if got[i] != ref[i]]
+        if bad:
+            return ['%d/%d bytes de RAM difieren (primero 0x%04X)'
+                    % (len(bad), len(ref), 0xE000 + bad[0])]
+        return []
+    results.append(check('rebuild completo del scroll (sub 0x9888, RAM vs openMSX)',
+                         t_maprebuild))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 

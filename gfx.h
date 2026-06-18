@@ -26,5 +26,10 @@ uint16_t z_map_fetch(const uint16_t seg_tbl[8], uint8_t ix23, uint8_t ix25,
  * Validado byte-exacto vs estado RAM de openMSX. */
 void z_map_expand(uint8_t *ram);
 
+/* sub 0x9888-0x9A67: rebuild completo de una fila del scroll (prólogo +
+ * driver loop E2C0 + fetch + expansor). `ram` = RAM en 0xE000 (>=0xC00).
+ * Validado byte-exacto vs estado RAM completo de openMSX. */
+void z_map_rebuild(uint8_t *ram);
+
 #endif
 
