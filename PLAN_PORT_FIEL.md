@@ -147,10 +147,21 @@ RENDER DEL SCROLL MAPEADO (2026-06-18, probe_scrollpc/mapbuf):
 - Modelo del scroll: el motor actualiza 0xE800 (lo desplaza + mete filas
   nuevas del mapa de nivel) y esta rutina lo blittea a VRAM.
 
-PENDIENTE (núcleo de Fase 2): el MOTOR que llena/desplaza 0xE800 desde el
-mapa de nivel en ROM — ubicar el mapa y su formato (¿comprimido con
-z_decompress?), la variable de posición/scroll, y el ritmo. Después portar
-el blit (0x9A80) + el motor y validar la name table frame a frame vs openMSX.
+TUBERÍA COMPLETA DEL SCROLL MAPEADA (2026-06-18, probe_mapfill):
+1. **Fill de filas nuevas** (PC 0x99F6, 672 wr): copia el mapa de nivel al
+   buffer (DE=0xEA40 = 0xE800+0x240 = fila de staging). El mapa está en
+   **ROM (~0xA564), tile data CRUDA** (verificado byte a byte). PERO el
+   acceso NO es lineal: usa una **tabla de indirección en 0xE2AC** (words,
+   indexada por IX[23]&7) + RST 0x20 + LDIR de (0x20-C) bytes, con filas de
+   32 de ancho. Es el formato de mapa de Zanac (segmentos por tabla); el run
+   crudo de 0xA564 era un segmento contiguo. FALTA decodificar 0xE2AC.
+2. **Shift del scroll** (PC 0x9A66, 504 wr): copia buffer→buffer
+   (0xEA48→0xE968) — desplaza las filas existentes.
+3. **Blit a VRAM** (0x9A80): buffer 0xE800 → name table 0x3800 (ya mapeado).
+
+PENDIENTE (núcleo de Fase 2): decodificar el formato de mapa (tabla 0xE2AC +
+RST 0x20 + el puntero/posición de scroll), portar fill+shift+blit, y validar
+la name table frame a frame vs openMSX.
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
