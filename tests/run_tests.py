@@ -77,15 +77,15 @@ def main():
             return ['exe falló']
         got = open(out, 'rb').read()
         os.remove(out)
-        ref = open(os.path.join(FIX, 'vram_title.bin'), 'rb').read()[:0x3800]
+        ref = open(os.path.join(FIX, 'vram_title.bin'), 'rb').read()
         errs = []
         for name, s, e in (('pattern', 0, 0x1800), ('sprite', 0x1800, 0x2000),
-                           ('color', 0x2000, 0x3800)):
+                           ('color', 0x2000, 0x3800), ('name table', 0x3800, 0x3B00)):
             bad = sum(1 for i in range(s, e) if got[i] != ref[i])
             if bad:
                 errs.append('%s: %d/%d bytes difieren' % (name, bad, e - s))
         return errs
-    results.append(check('gráficos del título (patrones+sprites+color vs openMSX)',
+    results.append(check('título completo (patrones+sprites+color+name table vs openMSX)',
                          t_titlegfx))
 
     # --- blit del scroll (sub_9A80): buffer del mapa → name table vs openMSX -

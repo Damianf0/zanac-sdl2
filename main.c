@@ -102,6 +102,18 @@ static const struct { uint16_t dst, src; } title_text[8] = {
     {0x3803, 0x5A2A}, {0x3811, 0x5A36}, {0x39E3, 0x5ACE}, {0x3A03, 0x5AED},
     {0x3A23, 0x5B08}, {0x3A43, 0x5B29}, {0x3A8E, 0x5B4A}, {0x3AAE, 0x5B54},
 };
+/* Logo de ZANAC: 5 runs de tiles (0xB0-0xE6) copiados del bloque en ROM
+ * 0x4828 a sus posiciones en la name table (filas 5-8 y 11). dst, src(ROM),
+ * len — verificados byte a byte contra la VRAM real (vram_title.bin). */
+static const struct { uint16_t dst, src; uint8_t len; } title_logo[5] = {
+    {0x38A8, 0x4828, 16}, {0x38CA, 0x483D, 11}, {0x38E9, 0x484F, 12},
+    {0x3908, 0x4861, 16}, {0x3969, 0x4873, 18},
+};
+/* Dígitos iniciales del HUD: SCORE=0 ("0") y TOP=10000 ("10000"),
+ * tiles ASCII (0x30='0'..0x39='9'). */
+static const struct { uint16_t dst; const char *s; } title_score[2] = {
+    {0x380F, "0"}, {0x3817, "10000"},
+};
 static void load_title_nametable(void)
 {
     VramCtx c;
@@ -110,6 +122,13 @@ static void load_title_nametable(void)
         c.addr = title_text[i].dst;
         z_copy_literal(title_text[i].src, emit_vram, &c);
     }
+    for (int i = 0; i < 5; i++)
+        for (uint8_t j = 0; j < title_logo[i].len; j++)
+            hal_vdp_write_vram(title_logo[i].dst + j, rom_rb(title_logo[i].src + j));
+    for (int i = 0; i < 2; i++)
+        for (const char *p = title_score[i].s; *p; p++)
+            hal_vdp_write_vram(title_score[i].dst + (uint16_t)(p - title_score[i].s),
+                               (uint8_t)(*p - '0' + 0x30u));
 }
 
 /* Harness: ZANAC_TITLEGFX=out.bin → limpia VRAM, carga los gráficos del
@@ -241,11 +260,25 @@ int main(int argc, char *argv[])
     hal_vdp_clear_sprites();
     vdp_init_zanac();
 
-    printf("Zanac — Fase 1 (esqueleto VDP). Esc para salir.\n");
+    /* PANTALLA DE TÍTULO: gráficos (patrones+sprites+color) + name table,
+     * todo porteado y validado byte-exacto contra openMSX. Esto es lo
+     * primero VISIBLE del port. */
+    load_title_gfx();
+    load_title_nametable();
 
-    /* loop principal: por ahora solo presenta el frame (pantalla en el
-     * backdrop). El render de tiles/title se agrega al portar la cadena de
-     * init. Headless/smoke con CASTLE_FAST=1 sale tras unos frames. */
+    /* ZANAC_SHOT=out.bmp: renderiza el título y vuelca un screenshot (sin
+     * loop interactivo). Para mostrar el resultado sin abrir ventana. */
+    {
+        const char *shot = getenv("ZANAC_SHOT");
+        if (shot) { hal_vdp_present(); hal_screenshot(shot);
+                    printf("ZANAC_SHOT -> %s\n", shot); hal_quit(); free(rom); return 0; }
+    }
+
+    printf("Zanac — pantalla de título (gráficos validados vs openMSX). Esc para salir.\n");
+
+    /* loop principal: presenta el título. Headless/smoke con CASTLE_FAST=1
+     * sale tras unos frames. El scroll del juego se integra a continuación
+     * (motor de generación de filas ya validado byte-exacto). */
     int fast_frames = getenv("CASTLE_FAST") ? 120 : -1;
     while (hal_poll_events()) {
         hal_vdp_present();
