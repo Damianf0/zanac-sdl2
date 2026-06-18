@@ -25,3 +25,5 @@ probe_scroll3_out.txt
 probe_scrollpc_out.txt
 probe_mapbuf_out.txt
 probe_mapfill_out.txt
+probe_rst20_out.txt
+dump_ram_out.txt

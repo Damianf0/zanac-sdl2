@@ -159,9 +159,22 @@ TUBERÍA COMPLETA DEL SCROLL MAPEADA (2026-06-18, probe_mapfill):
    (0xEA48→0xE968) — desplaza las filas existentes.
 3. **Blit a VRAM** (0x9A80): buffer 0xE800 → name table 0x3800 (ya mapeado).
 
-PENDIENTE (núcleo de Fase 2): decodificar el formato de mapa (tabla 0xE2AC +
-RST 0x20 + el puntero/posición de scroll), portar fill+shift+blit, y validar
-la name table frame a frame vs openMSX.
+FORMATO DE MAPA DECODIFICADO (2026-06-18, probe_rst20/dump_ram):
+- El juego corre parte de su runtime desde **RAM página 0** y replica los
+  vectores RST del BIOS ahí: **RST 0x20 (→0x11C6) = DCOMPR** (CP HL,DE).
+  O sea NO es un helper de mapa: es el chequeo de borde de segmento.
+- **El mapa NO está comprimido**: son **tile rows CRUDAS en ROM (32 de
+  ancho), en SEGMENTOS**. La tabla 0xE2AC (RAM, armada al iniciar el nivel)
+  lista los punteros a segmentos: {0xA444, 0xA4A4, 0xA564, 0xA624, 0xA63C}.
+  El fill (0x99F6) lee del segmento actual (índice IX[23]&7) y avanza al
+  siguiente al llegar al borde (DCOMPR).
+- Punteros del scroll: 0xE71A=dest buffer (0xEA40), 0xE715=pos en buffer.
+
+PENDIENTE (implementación de Fase 2): ubicar cómo se inicializa la tabla de
+segmentos 0xE2AC por nivel (la lista está en ROM), la variable de posición
+de scroll y su ritmo, y portar fill (0x99F6) + shift (0x9A66) + blit
+(0x9A80). Validar la name table frame a frame vs openMSX. (El descompresor
+z_decompress NO se usa para el mapa — el mapa es raw; sí para tiles/título.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
