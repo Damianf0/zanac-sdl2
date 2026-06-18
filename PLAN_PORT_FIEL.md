@@ -211,26 +211,36 @@ PORTADO Y VALIDADO (2026-06-18) — núcleo de generación de filas del scroll:
   Transcripción primero en Python (tools/sim_tick.py, 0 diffs) y luego en C.
   Llamado desde 0x9802 (que además hace SET 0,1 (IX+0) = flag dirty).
 
-MAPEADO PERO SIN PORTAR (integración para correr en vivo, próxima sesión):
-- **Blit per-frame a VRAM 0x9A88-0x9AE2** (el real en gameplay, NO 0x9A80 que
-  no corre): SETWRT vía 0x0053, copia 24 OUTs/fila (0x9AB3) desde (E715) a la
-  name table 0x3800; tabla de split por fila en IY=0xE180; camino 0x9AC5 para
-  filas que envuelven el buffer circular; usa IX+14/+20 (nº de filas). Corre
-  cuando IX+0 bit0 (dirty) está set; lo limpia (0x9A86). z_blit_playfield ya
-  validó la lógica de copia básica (24/24) sobre captura estática.
-- **Shift vertical 0x9820-0x986D**: desplaza el buffer 0xE800 por (IX+13) filas
-  (LDIR/LDDR) + copia de columnas 0x986E.
-- **Comando 0x95A8 / recarga 0x95ED**: cruce de segmento + **spawn de objetos**
-  (tabla 0xE620, slot-finder 0x9B22) — acopla scroll con enemigos (caso no
-  cubierto por los ticks "limpios" validados; portar con captura propia).
-- **Despacho + init**: las rutinas (0x9802/0x9820/...) se llaman por TABLA
-  INDIRECTA (cluster ~ROM 0x6909), no por CALL directo. Falta el dispatcher de
-  estado, el avance de scroll (E715/E714) y el init de los bloques de control
-  (E2C0/E2E0/E2AC/IX) al empezar nivel.
-PRÓXIMO PASO: portar el blit per-frame (0x9A88) con captura de la tabla de
-split 0xE180 + estado, integrarlo con z_map_rebuild en el loop runtime, y fijar
-el avance de scroll para ver el playfield desplazándose. (z_decompress NO se
-usa para el mapa.)
+- **z_map_command** (sub 0x95A8 + 0x95C0 + 0x95ED + 0x9B22): COMMAND HANDLER
+  del stream del mapa. Programa N columnas del bloque E2E0 (selector con bit3 +
+  tile-base + ptr) y dispara **spawns de objetos** en la tabla 0xE620
+  (slot-finder 0x9B22, escribe 0xE780/E150-E152/IX+29). Validado **byte-exacto
+  vs RAM completa** de un call que dispara spawn (cap_cmd.tcl). Transcripción en
+  Python (sim_cmd.py, 0 diffs) y luego C.
+
+ARQUITECTURA DEL VM DE NIVEL COMPLETAMENTE MAPEADA (2026-06-18) — lo que falta
+es portar/cablear esto (todo el motor de bajo nivel de arriba YA está validado):
+- **Script VM**: IX+4/5 → script en ROM (nivel 1: ~0xA75B). Fetch 0x97D5 lee
+  `[trigger:word][cont:word]` (→ E706/E704) y JP 0x94D1.
+- **Dispatcher 0x94D1**: compara pos de scroll (0xE702) con el trigger (0xE706);
+  si != → **avanza scroll 0x97E3**; si == → ejecuta el opcode: A=(E704)&0x0F,
+  CALL 0x5C2E (salto por TABLA inline en 0x94EB) a un handler.
+- **Handlers** (cada uno JP 0x97D5 al terminar): 0x9505/0x9508 y 0x956E arman
+  entradas del bloque E2C0 (pos/ptr/timers=1); 0x95A2 → z_map_command (columnas
+  E2E0 + spawn). 0x5C2E = primitiva de salto por tabla (pendiente de leer).
+- **Avance de scroll 0x97E3-0x980D**: C=(IX+20); E715 -= 24 (una fila), envuelve
+  a 0xEA28/C=0x17 en 0; (IX+20)=C; CALL 0x9888 (rebuild) — el paso de scroll por
+  fila (8px). Scroll fino sub-tile: por el blit per-frame.
+- **Blit per-frame 0x9A88-0x9AE2**: SETWRT (0x0053) + 24 OUTs/fila desde (E715)
+  a name table 0x3800; tabla de split por fila IY=0xE180; camino de wrap 0x9AC5;
+  IX+14/+20. z_blit_playfield ya validó la copia básica (24/24).
+- **Init de nivel**: 0x9415 llena E2C0/E2E0 con 0x80; setea IX (IX+4/5=script
+  ptr, IX+1C, etc.), E2AC[4/5]=A624/A63C, E702=0.
+- Spawn de objetos (0xE620) ya cubierto por z_map_command (acopla con enemigos).
+PRÓXIMO PASO (playfield en vivo): portar VM (0x94D1+0x97D5+0x5C2E+handlers) +
+avance 0x97E3 + blit 0x9A88 + init, cablear en el loop, y validar end-to-end la
+name table contra una captura de gameplay. Lo VISIBLE ya disponible: el TÍTULO
+completo (zanac.exe). (z_decompress NO se usa para el mapa.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
