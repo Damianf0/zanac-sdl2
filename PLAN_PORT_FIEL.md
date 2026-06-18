@@ -202,24 +202,35 @@ PORTADO Y VALIDADO (2026-06-18) — núcleo de generación de filas del scroll:
   (cap_expander.tcl). Camino normal + especial(bit6) exactos.
 - **z_blit_playfield** (sub 0x9A80): buffer 0xE800 → name table. Validado 24/24.
 
-MAPEADO PERO SIN PORTAR (driver alto del scroll, próxima sesión):
-- **Prólogo 0x9888-0x98D2**: arma E2AE/E2B0/E2B2 desde 0xE702 (sección/nivel) y
-  resetea IX+23/24/25 + E71A=0xEA40, IY=0xE2C0.
-- **Driver loop 0x98D4-0x99CF** (bloque 0xE2C0, 4×8B: pos+0/+1, ptr+2/+3,
-  ptr2+4/+5, timer+6, timer+7): stream de comandos propio (0xFF en 0x990D),
-  selecciona segmento de 0xE2AC por `(IY+1)>>3 & 0x0E`, LDIR a (E71A), y suma
-  tile-base C=0x17/0x2E al mapa (0x9986) según bits de IY+1.
-- **Shift vertical 0x9820-0x986D** (rebuild 0x9802): desplaza el buffer 0xE800
-  por (IX+13) filas (LDIR/LDDR) + copia de columnas 0x986E.
+- **z_map_rebuild** (sub 0x9888-0x9A67): REBUILD completo de una fila. Prólogo
+  (arma E2AE/E2B0/E2B2 desde 0xE702 + resetea IX/E71A) + driver loop (4
+  entradas del bloque 0xE2C0, 8B c/u: pos+0/+1, ptr+2/+3, ptr2+4/+5, timer+6,
+  timer2+7; stream de comandos 0xFF en 0x990D; segmento por `(IY+1)>>3&0x0E`;
+  suma tile-base 0x17/0x2E según bits de IY+1) + fetch + expansor. Validado
+  **byte-exacto contra el estado RAM completo** (cap_tick.tcl, complex_fired=0).
+  Transcripción primero en Python (tools/sim_tick.py, 0 diffs) y luego en C.
+  Llamado desde 0x9802 (que además hace SET 0,1 (IX+0) = flag dirty).
+
+MAPEADO PERO SIN PORTAR (integración para correr en vivo, próxima sesión):
+- **Blit per-frame a VRAM 0x9A88-0x9AE2** (el real en gameplay, NO 0x9A80 que
+  no corre): SETWRT vía 0x0053, copia 24 OUTs/fila (0x9AB3) desde (E715) a la
+  name table 0x3800; tabla de split por fila en IY=0xE180; camino 0x9AC5 para
+  filas que envuelven el buffer circular; usa IX+14/+20 (nº de filas). Corre
+  cuando IX+0 bit0 (dirty) está set; lo limpia (0x9A86). z_blit_playfield ya
+  validó la lógica de copia básica (24/24) sobre captura estática.
+- **Shift vertical 0x9820-0x986D**: desplaza el buffer 0xE800 por (IX+13) filas
+  (LDIR/LDDR) + copia de columnas 0x986E.
 - **Comando 0x95A8 / recarga 0x95ED**: cruce de segmento + **spawn de objetos**
-  (tabla 0xE620, slot-finder 0x9B22) — acopla scroll con enemigos.
-- **Despacho**: las rutinas (0x9802/0x9820/...) se llaman por TABLA INDIRECTA
-  (cluster ~ROM 0x6909, p.ej. 9802/6801), no por CALL directo — hay que fijar
-  el dispatcher de estado para validar el tick per-frame completo.
-PRÓXIMO PASO CONCRETO: capturar RAM completa antes/después de UN tick per-frame
-(método cap_expander, ya probado), transcribir prólogo+driver+shift, validar
-RAM byte-exacta; luego integrar al loop runtime. (z_decompress NO se usa para
-el mapa.)
+  (tabla 0xE620, slot-finder 0x9B22) — acopla scroll con enemigos (caso no
+  cubierto por los ticks "limpios" validados; portar con captura propia).
+- **Despacho + init**: las rutinas (0x9802/0x9820/...) se llaman por TABLA
+  INDIRECTA (cluster ~ROM 0x6909), no por CALL directo. Falta el dispatcher de
+  estado, el avance de scroll (E715/E714) y el init de los bloques de control
+  (E2C0/E2E0/E2AC/IX) al empezar nivel.
+PRÓXIMO PASO: portar el blit per-frame (0x9A88) con captura de la tabla de
+split 0xE180 + estado, integrarlo con z_map_rebuild en el loop runtime, y fijar
+el avance de scroll para ver el playfield desplazándose. (z_decompress NO se
+usa para el mapa.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
