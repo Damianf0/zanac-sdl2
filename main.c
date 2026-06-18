@@ -306,58 +306,58 @@ int main(int argc, char *argv[])
                     printf("ZANAC_SHOT -> %s\n", shot); hal_quit(); free(rom); return 0; }
     }
 
-    /* ===== MODO PLAYFIELD: scroll del nivel 1 generado por el VM validado =====
-     * ZANAC_PLAY=1 (loop interactivo) o ZANAC_SHOTPLAY=out.bmp (screenshot).
-     * Corre z_level_init (llena el buffer con el mapa) y, por frame, avanza el
-     * scroll (z_vm_step) + bliteа el buffer circular a la name table. Usa los
-     * gráficos de tiles ya cargados (terreno 0x24-0x27 byte-exacto vs gameplay). */
+    /* ===== PLAYFIELD del nivel 1 (mapa generado por el VM validado) =====
+     * Estado y helpers compartidos por el modo interactivo y los harness. El
+     * VM (z_level_init/z_vm_step) llena y avanza el buffer circular del mapa;
+     * z_blit_playfield lo vuelca a la name table. Tiles del título (terreno
+     * 0x24-0x27 byte-exacto vs gameplay). */
+    static uint8_t ram[0xC00];
+    uint8_t nt[768];
+    #define PF_INIT() do { \
+        memset(ram, 0, sizeof ram); \
+        ram[0xE701 - 0xE000] = 0x01; ram[0xE712 - 0xE000] = 0x34; \
+        z_level_init(ram, 0xA751u); \
+    } while (0)
+    #define BLIT_NT() do { \
+        uint16_t e715 = ram[0xE715-0xE000] | (ram[0xE716-0xE000]<<8); \
+        int start = ((e715 - 0xE800) / 24) % 24; if (start < 0) start += 24; \
+        memset(nt, 0x20u, sizeof nt); /* HUD (cols 24-31) en blanco */ \
+        z_blit_playfield(&ram[0xE800-0xE000], start, nt); \
+        for (uint16_t a = 0; a < 768; a++) hal_vdp_write_vram(0x3800u + a, nt[a]); \
+    } while (0)
+
+    /* ZANAC_SHOTPLAY=out.bmp (+ ZANAC_PLAYSTEPS=N): screenshot del playfield. */
     {
-        const char *play = getenv("ZANAC_PLAY");
         const char *shotp = getenv("ZANAC_SHOTPLAY");
-        if (play || shotp) {
-            static uint8_t ram[0xC00];
-            memset(ram, 0, sizeof ram);
-            ram[0xE701 - 0xE000] = 0x01; ram[0xE712 - 0xE000] = 0x34;
-            z_level_init(ram, 0xA751u);
-            uint8_t nt[768];
-            #define BLIT_NT() do { \
-                uint16_t e715 = ram[0xE715-0xE000] | (ram[0xE716-0xE000]<<8); \
-                int start = ((e715 - 0xE800) / 24) % 24; if (start < 0) start += 24; \
-                memset(nt, 0x20u, sizeof nt); /* HUD (cols 24-31) en blanco */ \
-                z_blit_playfield(&ram[0xE800-0xE000], start, nt); \
-                for (uint16_t a = 0; a < 768; a++) hal_vdp_write_vram(0x3800u + a, nt[a]); \
-            } while (0)
-            if (getenv("ZANAC_PLAYSTEPS")) {
-                int n = atoi(getenv("ZANAC_PLAYSTEPS"));
-                for (int i = 0; i < n; i++) z_vm_step(ram);
-            }
-            BLIT_NT();
-            if (shotp) { hal_vdp_present(); hal_screenshot(shotp);
-                         printf("ZANAC_SHOTPLAY -> %s\n", shotp); hal_quit(); free(rom); return 0; }
-            printf("Zanac — PLAYFIELD nivel 1 (mapa generado por el VM, validado vs openMSX). Esc sale.\n");
-            int pf = getenv("CASTLE_FAST") ? 240 : -1;
-            int sub = 0;
-            while (hal_poll_events()) {
-                /* avance de scroll: un paso del VM cada ~6 frames (≈8px/paso) */
-                if (++sub >= 6) { sub = 0; z_vm_step(ram); BLIT_NT(); }
-                hal_vdp_present();
-                hal_wait_vsync();
-                if (pf > 0 && --pf == 0) break;
-            }
-            hal_quit(); free(rom); return 0;
+        if (shotp) {
+            PF_INIT();
+            if (getenv("ZANAC_PLAYSTEPS")) { int n = atoi(getenv("ZANAC_PLAYSTEPS"));
+                for (int i = 0; i < n; i++) z_vm_step(ram); }
+            BLIT_NT(); hal_vdp_present(); hal_screenshot(shotp);
+            printf("ZANAC_SHOTPLAY -> %s\n", shotp); hal_quit(); free(rom); return 0;
         }
     }
 
-    printf("Zanac — pantalla de título (gráficos validados vs openMSX). Esc para salir.\n");
-
-    /* loop principal: presenta el título. Headless/smoke con CASTLE_FAST=1
-     * sale tras unos frames. El scroll del juego se integra a continuación
-     * (motor de generación de filas ya validado byte-exacto). */
-    int fast_frames = getenv("CASTLE_FAST") ? 120 : -1;
+    /* INTERACTIVO: título → ESPACIO/fire arranca el nivel 1 → scroll. Esc sale.
+     * (ZANAC_PLAY=1 arranca directo en el playfield.) */
+    bool in_play = getenv("ZANAC_PLAY") != NULL;
+    if (in_play) { PF_INIT(); BLIT_NT(); }
+    printf("Zanac — ESPACIO para empezar el nivel 1; Esc para salir.\n");
+    int fast_frames = getenv("CASTLE_FAST") ? 200 : -1;
+    int sub = 0;
     while (hal_poll_events()) {
+        if (!in_play && hal_key_pressed()) {        /* arranca el nivel */
+            in_play = true; PF_INIT(); BLIT_NT(); sub = 0;
+        }
+        if (in_play && ++sub >= 6) {                /* avanza el scroll ~cada 6 frames */
+            sub = 0; z_vm_step(ram); BLIT_NT();
+        }
         hal_vdp_present();
         hal_wait_vsync();
-        if (fast_frames > 0 && --fast_frames == 0) break;
+        if (fast_frames > 0 && --fast_frames == 0) {
+            if (!in_play) { in_play = true; PF_INIT(); BLIT_NT(); fast_frames = 60; }
+            else break;
+        }
     }
 
     hal_quit();
