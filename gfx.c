@@ -38,6 +38,26 @@ void z_blit_playfield(const uint8_t *buf, int start, uint8_t *nt /* 768B, 32-wid
     }
 }
 
+/* sub_9A80 entrada (0x99D2-0x99F5): FETCH de fila de mapa. Selecciona el
+ * segmento ROM por (ix23 & 7) en la tabla seg_tbl[8] (= 0xE2AC), suma la
+ * columna actual `col` (= IX+25) y copia (0x20 - col) bytes del mapa CRUDO
+ * al staging. Si col >= 0x20 no copia nada (JR NC 0x99F7). Devuelve los
+ * bytes copiados. Validado 32/32 vs openMSX (idx=3 → 0xA564, sección de
+ * apertura). El staging tiene runs con prefijo de longitud (0x17 = run de
+ * 23), que el expansor 0x99FD luego expande al buffer visible. */
+uint16_t z_map_fetch(const uint16_t seg_tbl[8], uint8_t ix23, uint8_t ix25,
+                     uint8_t *staging /* >= 32 bytes */)
+{
+    uint8_t col = ix25;
+    if (col >= 0x20u) return 0;            /* JR NC 0x99F7: sin fetch */
+    uint16_t ptr = seg_tbl[ix23 & 7u];
+    uint16_t src = (uint16_t)(ptr + col);
+    uint16_t len = (uint16_t)(0x20u - col);
+    for (uint16_t i = 0; i < len; i++)
+        staging[i] = rb((uint16_t)(src + i));
+    return len;
+}
+
 /* sub_5C10: copia un stream terminado en 0x00 desde ROM[src] vía emit().
  * (textos de la name table: créditos, HUD). Devuelve el src final. */
 uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx)

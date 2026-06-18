@@ -14,5 +14,11 @@ uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx);
  * name table (32-wide), desde la fila `start` con wrap. */
 void z_blit_playfield(const uint8_t *buf, int start, uint8_t *nt);
 
+/* sub 0x99D2-0x99F5: fetch de fila de mapa cruda desde el segmento ROM
+ * seg_tbl[ix23&7] + col(=ix25) al staging; copia (0x20-col) bytes (0 si
+ * col>=0x20). Validado 32/32 vs openMSX. */
+uint16_t z_map_fetch(const uint16_t seg_tbl[8], uint8_t ix23, uint8_t ix25,
+                     uint8_t *staging);
+
 #endif
 

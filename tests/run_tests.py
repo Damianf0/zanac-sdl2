@@ -111,6 +111,34 @@ def main():
     results.append(check('blit del scroll (sub_9A80, playfield vs openMSX)',
                          t_blit))
 
+    # --- fetch de fila de mapa (sub 0x99D2-0x99F5) vs staging de openMSX ------
+    # ZANAC_MAPFETCH corre z_map_fetch con la tabla de segmentos 0xE2AC y los
+    # IX+23/IX+25 reales (tests/fixtures/mapfetch.txt) y debe reproducir los
+    # 32 bytes de mapa crudo que el juego copió al staging (0xEA40). Confirma
+    # que el mapa sale de E2AC[(ix23&7)]+col, no de 0xA564 crudo.
+    def t_mapfetch():
+        fx = {}
+        for line in open(os.path.join(FIX, 'mapfetch.txt')):
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            k, v = line.split('=', 1)
+            fx[k] = v
+        ref = [int(x, 16) for x in fx['staging'].split(',')]
+        out = os.path.join(tempfile.gettempdir(), 'zmapfetch.bin')
+        env = dict(os.environ, ZANAC_MAPFETCH=out, ZANAC_MF_TBL=fx['tbl'],
+                   ZANAC_MF_IX23=fx['ix23'], ZANAC_MF_IX25=fx['ix25'])
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        bad = sum(1 for i in range(32) if got[i] != ref[i])
+        return [] if not bad else ['%d/32 bytes del staging difieren' % bad]
+    results.append(check('fetch de fila de mapa (sub 0x99D2, staging vs openMSX)',
+                         t_mapfetch))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 

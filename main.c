@@ -182,6 +182,26 @@ int main(int argc, char *argv[])
             printf("ZANAC_BLIT -> %s (start=%d)\n", bl, start);
             free(rom); return 0;
         }
+        /* ZANAC_MAPFETCH=out.bin + ZANAC_MF_TBL="p0,p1,..,p7" (hex) +
+         * ZANAC_MF_IX23 + ZANAC_MF_IX25: corre z_map_fetch y vuelca el
+         * staging (32B). Valida el fetch de fila de mapa contra openMSX. */
+        const char *mf = getenv("ZANAC_MAPFETCH");
+        if (mf) {
+            uint16_t tbl[8] = {0};
+            const char *ts = getenv("ZANAC_MF_TBL");
+            if (ts) { char b[256]; strncpy(b, ts, sizeof b - 1); b[sizeof b - 1] = 0;
+                int i = 0; for (char *t = strtok(b, ","); t && i < 8; t = strtok(NULL, ","))
+                    tbl[i++] = (uint16_t)strtol(t, NULL, 16); }
+            uint8_t ix23 = getenv("ZANAC_MF_IX23") ? (uint8_t)strtol(getenv("ZANAC_MF_IX23"), NULL, 16) : 0;
+            uint8_t ix25 = getenv("ZANAC_MF_IX25") ? (uint8_t)strtol(getenv("ZANAC_MF_IX25"), NULL, 16) : 0;
+            uint8_t staging[32];
+            memset(staging, 0, sizeof staging);
+            z_map_fetch(tbl, ix23, ix25, staging);
+            FILE *o = fopen(mf, "wb");
+            if (o) { fwrite(staging, 1, sizeof staging, o); fclose(o); }
+            printf("ZANAC_MAPFETCH -> %s\n", mf);
+            free(rom); return 0;
+        }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }

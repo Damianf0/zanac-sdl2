@@ -1,0 +1,8 @@
+# Fetch de fila de mapa (sub 0x99D2-0x99F5) capturado de openMSX
+# (tools/cap_segfetch.tcl) en gameplay, sección de apertura.
+# tbl = 0xE2AC[8] punteros de segmento (little-endian ya resuelto)
+# ix23, ix25 = (IX+23),(IX+25); staging = 32 bytes resultado (mapa crudo)
+tbl=0000,A444,A4A4,A564,A624,A63C,0000,0000
+ix23=33
+ix25=00
+staging=17,17,17,17,17,18,18,19,27,27,27,27,26,26,27,26,26,27,26,26,24,27,26,27,27,27,26,27,27,27,27,25
