@@ -178,12 +178,21 @@ FORMATO DE MAPA DECODIFICADO (2026-06-18, probe_rst20/dump_ram):
   Hallazgo: el texto "ROUND 1" del intro de nivel es un overlay aparte
   (copia literal, como los títulos), no parte del blit.
 
-PENDIENTE (implementación de Fase 2): el FILL (0x99F6) + SHIFT (0x9A66) que
-mantienen el buffer 0xE800 — ubicar la init de la tabla de segmentos 0xE2AC
-por nivel (lista en ROM) y el ritmo/avance de la posición de scroll. Con eso
-+ el blit ya porteado, el scroll queda andando. Validar frame a frame.
-(El descompresor z_decompress NO se usa para el mapa — el mapa es raw; sí
-para tiles/título.)
+- **FORMATO DEL MAPA decodificado (2026-06-18)**: el mapa son **runs con
+  PREFIJO DE LONGITUD** en ROM (no tiles planos): rutina 0x9A30 lee
+  `[count][count tiles]` del staging (0xEA40) y los expande al buffer
+  visible vía LDIR; `count==0` termina la fila, `count>=0xFE` = COMANDO
+  (handler 0x95A8, sin explorar — probable repeat/columna). Por eso el
+  buffer (0x24-27, tiles) no coincide byte a byte con el ROM (0x17=run de
+  23): 0x17 era el contador, no un tile. El mapa está en segmentos (tabla
+  0xE2AC: A444/A4A4/A564/...), filas de 24 efectivas, sección de apertura
+  loopea 8 filas.
+
+PENDIENTE (implementación de Fase 2, próxima sesión): portar el expansor de
+runs (0x9A30 + comandos 0x95A8), el fill (0x99F6) que alimenta el staging
+desde los segmentos, el avance de scroll (E715) y su ritmo. Con eso + el
+blit ya porteado/validado, el scroll queda completo. Validar la name table
+frame a frame vs openMSX. (z_decompress NO se usa para el mapa.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
