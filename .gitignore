@@ -1,0 +1,6 @@
+# artefactos de captura/oraculo (regenerables)
+dis_oracle_out.txt
+zanac_ref*.txt
+zanac_ref*.png
+*.exe
+SDL2.dll
