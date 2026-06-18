@@ -277,13 +277,27 @@ DETALLES CONCRETOS DEL VM (2026-06-18, para portar la próxima sesión):
   + lf_after.bin (RAM tras 0x946E, buffer lleno). Portar init+VM+handlers, correr
   24 pasos, y validar el buffer 0xE800 byte-exacto. Faltan disasm de varios
   handlers (0x9678/0x9699/0x96DE/0x96E5/0x9742/0x977D).
-PRÓXIMO PASO (playfield en vivo): portar el VM + handlers + blit 0x9A88 + init,
-cablear, validar end-to-end vs lf_after.bin y la name table. Lo VISIBLE ya
-disponible: el TÍTULO completo (zanac.exe). (z_decompress NO se usa para el mapa.)
+FASE 2 COMPLETA Y EN VIVO (2026-06-18): el VM está PORTADO (z_level_init +
+z_vm_step + 12 handlers + rebuild + command) y VALIDADO byte-exacto (init + 24
+pasos = buffer del nivel 1, 0/576, SIN datos de captura). main.c: título →
+ESPACIO → el nivel 1 SCROLLEA en vivo. Confirmado fiel: la apertura usa solo
+tiles 0x24-0x27, los 4 idénticos (patrón+color) título-vs-gameplay. El scroll
+corre ~2976 pasos (≈5 min) antes de toparse con el handler 9 (salto de sección,
+no portado). z_decompress NO se usa para el mapa.
+Pendientes de Fase 2 (no urgentes): handler 9 (0x96DE→0x9433, +0x9444/0x4C68);
+blit per-frame real 0x9A88 (uso z_blit_playfield, validado 24/24); HUD/score.
 
-### Fase 3 — Jugador (nave): movimiento + disparo
+### Fase 3 — Jugador (nave): movimiento + disparo  ← PRÓXIMA
 Input, límites, sprite, disparo principal y la rotación de armas
 secundarias (Zanac tiene 8 armas). Validar posición/sprites frame a frame.
+ENTRY POINTS hallados (2026-06-18): SAT en VRAM **0x3B80** (reg5 VDP=0x77).
+La NAVE = sprites 0+1 del SAT, patrones **0x38/0x3C** (16x16, 2 colores),
+posición de gameplay ~X=0x78 Y=0x8F (centro-abajo), colores 0x8F/0x81. Los
+patrones de sprite ya están en VRAM 0x1800 (idénticos título/gameplay). El
+juego NO usa BIOS GTSTCK/GTTRIG — lee el joystick por el puerto PSG (reg 14/15).
+Falta: hallar las variables de posición del jugador en RAM, la rutina de
+movimiento/límites y el refresh del SAT (per-frame, ~0x9AE4). El HAL ya ofrece
+hal_joystick_read()/hal_key_pressed() para alimentar la lógica porteada.
 
 ### Fase 4 — Enemigos + proyectiles + IA adaptativa (ALC)
 El sistema de enemigos (spawns por scroll), proyectiles, colisiones, y la
