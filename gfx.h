@@ -1,0 +1,10 @@
+#ifndef ZANAC_GFX_H
+#define ZANAC_GFX_H
+#include <stdint.h>
+
+/* sub_5CDC: descompresor RLE anidado de Zanac. Descomprime desde ROM[src]
+ * (dirección Z80) emitiendo cada byte de salida por emit(ctx, byte).
+ * Devuelve el src final. Validado byte a byte vs openMSX. */
+uint16_t z_decompress(uint16_t src, void (*emit)(void *, uint8_t), void *ctx);
+
+#endif

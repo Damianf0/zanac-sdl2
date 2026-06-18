@@ -19,6 +19,7 @@
 #include <SDL2/SDL.h>
 
 #include "hal.h"
+#include "gfx.h"
 
 #define ROM_SIZE 32768u
 #define ROM_PATH "zanac.rom"
@@ -64,6 +65,26 @@ static void vdp_init_zanac(void)
     for (uint8_t r = 0; r < 8; r++) hal_vdp_write_reg(r, regs[r]);
 }
 
+/* Harness de validación del descompresor (sin SDL): ZANAC_DECOMP=out.txt
+ * corre las 13 invocaciones del título (mismos punteros fuente que capturó
+ * tools/trace_entry.tcl) y vuelca cada byte de salida — comparable contra
+ * tools/trace_out.tcl (la salida real de openMSX). */
+static void emit_file(void *ctx, uint8_t b) { fprintf((FILE *)ctx, "%02X\n", b); }
+
+static int decomp_harness(const char *out)
+{
+    static const uint16_t calls[13] = {
+        0x5EFC, 0x5EFC, 0x5EFC, 0x6976, 0x64D3, 0x64D3, 0x64D3,
+        0x5D2C, 0x5D2C, 0x5D2C, 0x5EF0, 0x5EF0, 0x5EF0
+    };
+    FILE *f = fopen(out, "w");
+    if (!f) return 1;
+    for (int i = 0; i < 13; i++) z_decompress(calls[i], emit_file, f);
+    fclose(f);
+    printf("ZANAC_DECOMP -> %s\n", out);
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     const char *rom_path = (argc > 1) ? argv[1] : ROM_PATH;
@@ -71,6 +92,11 @@ int main(int argc, char *argv[])
     uint8_t *rom = load_rom(rom_path, &rom_size);
     if (!rom) return 1;
     g_rom = rom; g_rom_size = rom_size;
+
+    {
+        const char *dc = getenv("ZANAC_DECOMP");
+        if (dc) { int r = decomp_harness(dc); free(rom); return r; }
+    }
 
     if (!hal_init(false)) { free(rom); return 1; }
     hal_vdp_init_screen2();

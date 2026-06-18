@@ -89,9 +89,17 @@ Avance (2026-06-17):
     EX(SP),HL) — salta a un sub-stream.
   * L5D06: run anidado (C=cuenta externa, B=interna, A=valor) → L5D1A.
   * L5D1A: emite A vía L5C07 (OUT 0x98); B=1 o B=(HL) según E bit0.
-  PENDIENTE: portar el descompresor a C, ubicar sus call-sites y los params
-  (D/E/HL/dest VRAM) por cada sección (patrones/color/name), y comparar VRAM
-  byte a byte (suite `vram_title`, como en The Castle).
+- **DESCOMPRESOR PORTADO A C Y VALIDADO ✅ (2026-06-17)** — `gfx.c`
+  (`z_decompress`): el algoritmo completo (escape/toggle, tabla de comandos
+  inline FF FF 0/1/2, run anidado, cuenta 0=256 por DJNZ). 13 invocaciones
+  del título (params de tools/trace_entry.tcl: src ∈ {5EFC,6976,64D3,5D2C,
+  5EF0}, ESC=FF, flag=0). Produce **17264/17264 bytes idénticos** a openMSX
+  (tools/trace_out.tcl → tests/fixtures/decomp_title.txt). Suite Zanac
+  nueva (tests/run_tests.py), 1/1.
+- PENDIENTE: las otras 2 rutas de copia del título (literal 0x00-terminada
+  L5C10 = 4602 B, y L5BFC = 5182 B); ubicar los dest VRAM (SETWRT) por
+  sección y escribir el título completo a VRAM; comparar VRAM byte a byte
+  (suite `vram_title`).
 - INFRA: z80dis.py ahora acepta `--seed 0xADDR` para entradas alcanzadas por
   saltos indirectos/tablas (como el descompresor).
 

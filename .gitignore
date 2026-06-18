@@ -9,3 +9,6 @@ trace_vdpwr_out.txt
 trace_src_out.txt
 trace_caller_out.txt
 dis_range_out.txt
+trace_out_out.txt
+trace_entry_out.txt
+decomp_port.txt
