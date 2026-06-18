@@ -237,10 +237,29 @@ es portar/cablear esto (todo el motor de bajo nivel de arriba YA está validado)
 - **Init de nivel**: 0x9415 llena E2C0/E2E0 con 0x80; setea IX (IX+4/5=script
   ptr, IX+1C, etc.), E2AC[4/5]=A624/A63C, E702=0.
 - Spawn de objetos (0xE620) ya cubierto por z_map_command (acopla con enemigos).
-PRÓXIMO PASO (playfield en vivo): portar VM (0x94D1+0x97D5+0x5C2E+handlers) +
-avance 0x97E3 + blit 0x9A88 + init, cablear en el loop, y validar end-to-end la
-name table contra una captura de gameplay. Lo VISIBLE ya disponible: el TÍTULO
-completo (zanac.exe). (z_decompress NO se usa para el mapa.)
+DETALLES CONCRETOS DEL VM (2026-06-18, para portar la próxima sesión):
+- **Entry per-frame / level-init**: main loop 0x4272 → CALL 0x9405 (init:
+  llena E2C0/E2E0 con 0x80 vía 0x9410; HL=script ptr → E704; primer trigger →
+  E706; E702=trigger-1; RES 0(IX+0)) → CALL 0x946E (corre 0x94C3 ×24 = llena el
+  buffer con las 24 filas iniciales). Script del NIVEL 1: **HL=0xA751**.
+- **Driver de scroll fino 0x94A0-0x94D0**: acumula IX+16/+17 (subpíxel); al
+  desbordar INC E702 y cae en 0x94D1. 0x94C3 = paso de fila (BIT3(IX+0)→CALL
+  0x9AE4 blit; INC E702; → 0x94D1).
+- **Dispatcher 0x94D1**: si E702!=E706 → JP 0x97E3 (avanza buffer 1 fila +
+  rebuild 0x9888 + RET). Si == → A=(E704)&0x0F; CALL 0x5C2E (salto por tabla).
+- **0x5C2E** = primitiva "JP tabla_inline[A]" (EX(SP),HL; A*2; indexa; RET).
+- **Tabla de handlers @ 0x94EB** (16 words): [0]97A8 [1]97B3 [2]9505 [3]9537
+  [4]956C [5]95A0 [6]9678 [7]9680 [8]9699 [9]96DE [10]96E5 [11]9742 [12]977D
+  (13-15 = datos). Cada handler lee operandos del script (E704), hace su cosa
+  (programar columnas E2C0/E2E0 vía z_map_command, etc.) y JP 0x97D5.
+- **0x97D5** = fetch: lee [trigger:word] siguiente → E706, E704=ptr; JP 0x94D1.
+- Oráculo de validación guardado: tests/fixtures/lf_before.bin (RAM en 0x9405)
+  + lf_after.bin (RAM tras 0x946E, buffer lleno). Portar init+VM+handlers, correr
+  24 pasos, y validar el buffer 0xE800 byte-exacto. Faltan disasm de varios
+  handlers (0x9678/0x9699/0x96DE/0x96E5/0x9742/0x977D).
+PRÓXIMO PASO (playfield en vivo): portar el VM + handlers + blit 0x9A88 + init,
+cablear, validar end-to-end vs lf_after.bin y la name table. Lo VISIBLE ya
+disponible: el TÍTULO completo (zanac.exe). (z_decompress NO se usa para el mapa.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
