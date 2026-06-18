@@ -202,6 +202,22 @@ int main(int argc, char *argv[])
             printf("ZANAC_MAPFETCH -> %s\n", mf);
             free(rom); return 0;
         }
+        /* ZANAC_MAPEXPAND=out.bin + ZANAC_ME_IN=before.bin: carga la RAM
+         * (0xE000-0xEBFF) capturada, corre z_map_expand y vuelca la RAM
+         * resultante. Valida el expansor del scroll contra openMSX. */
+        const char *me = getenv("ZANAC_MAPEXPAND");
+        if (me) {
+            const char *in = getenv("ZANAC_ME_IN");
+            uint8_t ram[0xC00];
+            FILE *bi = in ? fopen(in, "rb") : NULL;
+            if (!bi || fread(ram, 1, sizeof ram, bi) != sizeof ram) { free(rom); return 1; }
+            fclose(bi);
+            z_map_expand(ram);
+            FILE *o = fopen(me, "wb");
+            if (o) { fwrite(ram, 1, sizeof ram, o); fclose(o); }
+            printf("ZANAC_MAPEXPAND -> %s\n", me);
+            free(rom); return 0;
+        }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }

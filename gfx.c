@@ -58,6 +58,69 @@ uint16_t z_map_fetch(const uint16_t seg_tbl[8], uint8_t ix23, uint8_t ix25,
     return len;
 }
 
+/* sub_99FD-0x9A67: EXPANSOR de runs del scroll. Procesa las 8 "columnas" del
+ * bloque de control 0xE2E0 (4 bytes c/u: tilebase+0, contador+1, ptr-programa
+ * +2/+3). Cada columna lee su programa (en ROM, región del mapa) como runs
+ * [destOffset, count, count tiles] y los copia al staging (0xEA40+); al final
+ * copia 24 bytes de 0xEA48 al buffer visible en (0xE715). `ram` apunta a la
+ * RAM mapeada en 0xE000 (>= 0xC00 bytes). Bit6 del flag = run multi-fila en
+ * curso (sólo copia al expirar el contador); flag 0x80 = columna terminada.
+ * Validado byte-exacto vs el estado RAM completo de openMSX (caso sin comando
+ * 0xFE ni terminador 0x00). NOTA: no implementa el camino de comando (0x9A68
+ * -> 0x95A8, spawn de objetos) ni el de recarga 0x95ED. */
+static uint8_t mrd(const uint8_t *ram, uint16_t a)
+{
+    if (a >= 0xE000u && a < 0xEC00u) return ram[a - 0xE000u];
+    return rb(a);
+}
+static void mwr(uint8_t *ram, uint16_t a, uint8_t v)
+{
+    if (a >= 0xE000u && a < 0xEC00u) ram[a - 0xE000u] = v;
+}
+
+/* núcleo común desde 0x9A2C: A += programa[0]; copia `count` tiles del
+ * programa al staging 0xEA40+A; avanza ptr y contador de la columna. */
+static void expand_run(uint8_t *ram, uint8_t A, uint16_t HL, uint16_t iy)
+{
+    A = (uint8_t)(A + mrd(ram, HL)); HL++;
+    uint16_t de = (uint16_t)(0xEA40u + A);
+    uint8_t cnt = mrd(ram, HL); HL++;
+    if (cnt != 0 && cnt < 0xFEu) {           /* LDIR (count<0xFE, !=0) */
+        for (uint8_t i = 0; i < cnt; i++) { mwr(ram, de++, mrd(ram, HL)); HL++; }
+    }
+    mwr(ram, iy + 2, HL & 0xFFu); mwr(ram, iy + 3, (HL >> 8) & 0xFFu);
+    uint8_t v = (uint8_t)(mrd(ram, iy + 1) - 1); mwr(ram, iy + 1, v);
+    if (v == 0) mwr(ram, iy + 0, 0x80u);     /* columna terminada */
+}
+
+void z_map_expand(uint8_t *ram /* base 0xE000, >=0xC00 */)
+{
+    uint16_t iy = 0xE2E0u;
+    for (int b = 0; b < 8; b++, iy += 4) {
+        uint8_t A = mrd(ram, iy + 0);
+        if (A == 0x80u) continue;                       /* columna terminada */
+        if ((A & 0x40u) == 0) {                         /* 0x9A26 normal */
+            uint16_t HL = mrd(ram, iy + 2) | (mrd(ram, iy + 3) << 8);
+            expand_run(ram, A, HL, iy);
+        } else {                                        /* 0x9A08 especial */
+            uint8_t v = (uint8_t)(mrd(ram, iy + 1) - 1); mwr(ram, iy + 1, v);
+            if (v == 0) {                               /* contador expiró: recarga */
+                uint16_t de = mrd(ram, iy + 2) | (mrd(ram, iy + 3) << 8);
+                uint8_t a2 = mrd(ram, de++);
+                /* a2==0 -> CALL 0x95ED (recarga de segmento, no portado) */
+                mwr(ram, iy + 1, a2);
+                uint16_t HL = de;
+                mwr(ram, iy + 0, mrd(ram, iy + 0) & (uint8_t)~0x40u);
+                expand_run(ram, mrd(ram, iy + 0), HL, iy);
+            }
+        }
+    }
+    /* 0x9A5B: copia 24 bytes 0xEA48 -> buffer visible en (0xE715) */
+    uint16_t hl = 0xEA48u;
+    uint16_t de = mrd(ram, 0xE715u) | (mrd(ram, 0xE716u) << 8);
+    for (int i = 0; i < 0x18; i++) { mwr(ram, de++, mrd(ram, hl++)); }
+}
+
 /* sub_5C10: copia un stream terminado en 0x00 desde ROM[src] vía emit().
  * (textos de la name table: créditos, HUD). Devuelve el src final. */
 uint16_t z_copy_literal(uint16_t src, void (*emit)(void *, uint8_t), void *ctx)

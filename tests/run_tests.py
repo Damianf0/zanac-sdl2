@@ -139,6 +139,31 @@ def main():
     results.append(check('fetch de fila de mapa (sub 0x99D2, staging vs openMSX)',
                          t_mapfetch))
 
+    # --- expansor de runs del scroll (sub 0x99FD-0x9A67) vs RAM de openMSX ----
+    # ZANAC_MAPEXPAND carga el estado RAM (0xE000-0xEBFF) capturado JUSTO antes
+    # de un pase del expansor (exp_before.bin), corre z_map_expand y debe
+    # reproducir EXACTAMENTE la RAM resultante (exp_after.bin): las 8 columnas
+    # expandidas + la copia de 24 bytes al buffer visible. Pase sin comando
+    # 0xFE ni terminador 0x00 (cmd_fired=0 en la captura).
+    def t_mapexpand():
+        out = os.path.join(tempfile.gettempdir(), 'zexpand.bin')
+        env = dict(os.environ, ZANAC_MAPEXPAND=out,
+                   ZANAC_ME_IN=os.path.join(FIX, 'exp_before.bin'))
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        ref = open(os.path.join(FIX, 'exp_after.bin'), 'rb').read()
+        bad = [i for i in range(len(ref)) if got[i] != ref[i]]
+        if bad:
+            return ['%d/%d bytes de RAM difieren (primero 0x%04X)'
+                    % (len(bad), len(ref), 0xE000 + bad[0])]
+        return []
+    results.append(check('expansor de runs del scroll (sub 0x99FD, RAM vs openMSX)',
+                         t_mapexpand))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 

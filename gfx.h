@@ -20,5 +20,11 @@ void z_blit_playfield(const uint8_t *buf, int start, uint8_t *nt);
 uint16_t z_map_fetch(const uint16_t seg_tbl[8], uint8_t ix23, uint8_t ix25,
                      uint8_t *staging);
 
+/* sub 0x99FD-0x9A67: expansor de runs del scroll. Procesa las 8 columnas de
+ * 0xE2E0, expande sus programas (ROM) al staging y copia 24 bytes al buffer
+ * visible en (0xE715). `ram` = RAM mapeada en 0xE000 (>= 0xC00 bytes).
+ * Validado byte-exacto vs estado RAM de openMSX. */
+void z_map_expand(uint8_t *ram);
+
 #endif
 
