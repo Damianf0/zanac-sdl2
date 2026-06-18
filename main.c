@@ -333,29 +333,58 @@ int main(int argc, char *argv[])
             PF_INIT();
             if (getenv("ZANAC_PLAYSTEPS")) { int n = atoi(getenv("ZANAC_PLAYSTEPS"));
                 for (int i = 0; i < n; i++) z_vm_step(ram); }
-            BLIT_NT(); hal_vdp_present(); hal_screenshot(shotp);
+            BLIT_NT();
+            { uint8_t sy=0xA0-15;  /* nave en su posición inicial */
+              hal_vdp_write_vram(0x3B80u,sy); hal_vdp_write_vram(0x3B81u,0x78u);
+              hal_vdp_write_vram(0x3B82u,0x38u); hal_vdp_write_vram(0x3B83u,0x8Fu);
+              hal_vdp_write_vram(0x3B84u,(uint8_t)(sy+2)); hal_vdp_write_vram(0x3B85u,0x78u);
+              hal_vdp_write_vram(0x3B86u,0x3Cu); hal_vdp_write_vram(0x3B87u,0x81u);
+              hal_vdp_write_vram(0x3B88u,0xD0u); }
+            hal_vdp_present(); hal_screenshot(shotp);
             printf("ZANAC_SHOTPLAY -> %s\n", shotp); hal_quit(); free(rom); return 0;
         }
     }
 
-    /* INTERACTIVO: título → ESPACIO/fire arranca el nivel 1 → scroll. Esc sale.
-     * (ZANAC_PLAY=1 arranca directo en el playfield.) */
+    /* LA NAVE: struct real en E300 (X=+2 lim 0x28-0xC8, Y vertical=+1 lim
+     * 0x1E-0xB8; sprite Y=Y-15, X=X; sprites 0+1 patrones 0x38/0x3C, colores
+     * 0x8F/0x81). Render fiel; el MOVIMIENTO es provisional (paso fijo dentro
+     * de los límites reales) — la física fixed-point con tabla de velocidad
+     * 0x7758 se portará en el siguiente bloque. */
+    int px = 0x78, py = 0xA0;                       /* posición inicial (E302/E301) */
+    #define DRAW_SHIP() do { \
+        uint8_t sy = (uint8_t)(py - 15); \
+        hal_vdp_write_vram(0x3B80u, sy);        hal_vdp_write_vram(0x3B81u, (uint8_t)px); \
+        hal_vdp_write_vram(0x3B82u, 0x38u);     hal_vdp_write_vram(0x3B83u, 0x8Fu); \
+        hal_vdp_write_vram(0x3B84u, (uint8_t)(sy+2)); hal_vdp_write_vram(0x3B85u, (uint8_t)px); \
+        hal_vdp_write_vram(0x3B86u, 0x3Cu);     hal_vdp_write_vram(0x3B87u, 0x81u); \
+        hal_vdp_write_vram(0x3B88u, 0xD0u);     /* fin de sprites */ \
+    } while (0)
+    #define MOVE_SHIP() do { \
+        uint8_t d = hal_joystick_read(0); \
+        if (d==2||d==3||d==4) px += 2; else if (d==6||d==7||d==8) px -= 2; \
+        if (d==8||d==1||d==2) py -= 2; else if (d==4||d==5||d==6) py += 2; \
+        if (px < 0x28) px = 0x28; if (px > 0xC8) px = 0xC8; \
+        if (py < 0x1E) py = 0x1E; if (py > 0xB8) py = 0xB8; \
+    } while (0)
+
+    /* INTERACTIVO: título → ESPACIO/fire arranca el nivel 1 → scroll + nave. */
     bool in_play = getenv("ZANAC_PLAY") != NULL;
-    if (in_play) { PF_INIT(); BLIT_NT(); }
-    printf("Zanac — ESPACIO para empezar el nivel 1; Esc para salir.\n");
+    if (in_play) { PF_INIT(); BLIT_NT(); DRAW_SHIP(); }
+    printf("Zanac — ESPACIO para empezar el nivel 1; flechas mueven la nave; Esc sale.\n");
     int fast_frames = getenv("CASTLE_FAST") ? 200 : -1;
     int sub = 0;
     while (hal_poll_events()) {
         if (!in_play && hal_key_pressed()) {        /* arranca el nivel */
-            in_play = true; PF_INIT(); BLIT_NT(); sub = 0;
+            in_play = true; PF_INIT(); BLIT_NT(); DRAW_SHIP(); sub = 0;
         }
-        if (in_play && ++sub >= 6) {                /* avanza el scroll ~cada 6 frames */
-            sub = 0; z_vm_step(ram); BLIT_NT();
+        if (in_play) {
+            MOVE_SHIP(); DRAW_SHIP();
+            if (++sub >= 6) { sub = 0; z_vm_step(ram); BLIT_NT(); }  /* scroll ~cada 6 frames */
         }
         hal_vdp_present();
         hal_wait_vsync();
         if (fast_frames > 0 && --fast_frames == 0) {
-            if (!in_play) { in_play = true; PF_INIT(); BLIT_NT(); fast_frames = 60; }
+            if (!in_play) { in_play = true; PF_INIT(); BLIT_NT(); DRAW_SHIP(); fast_frames = 60; }
             else break;
         }
     }

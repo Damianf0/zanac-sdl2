@@ -353,7 +353,7 @@ static void update_vdp_addresses(void)
     vdp_name_base  = (uint16_t)((vdp_reg[2] & 0x0E) << 10);
     vdp_color_base = 0x2000u;   /* fijo en modo Screen 2 */
     vdp_pat_base   = 0x0000u;   /* fijo en modo Screen 2 */
-    vdp_spr_attr   = (uint16_t)((vdp_reg[5] & 0x7E) << 7);
+    vdp_spr_attr   = (uint16_t)((vdp_reg[5] & 0x7F) << 7);  /* 7 bits (Zanac: reg5=0x77 -> SAT 0x3B80) */
     vdp_spr_pat    = (uint16_t)((vdp_reg[6] & 0x07) << 11);
 }
 
