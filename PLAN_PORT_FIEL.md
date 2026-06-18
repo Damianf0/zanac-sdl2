@@ -188,11 +188,38 @@ FORMATO DE MAPA DECODIFICADO (2026-06-18, probe_rst20/dump_ram):
   0xE2AC: A444/A4A4/A564/...), filas de 24 efectivas, sección de apertura
   loopea 8 filas.
 
-PENDIENTE (implementación de Fase 2, próxima sesión): portar el expansor de
-runs (0x9A30 + comandos 0x95A8), el fill (0x99F6) que alimenta el staging
-desde los segmentos, el avance de scroll (E715) y su ritmo. Con eso + el
-blit ya porteado/validado, el scroll queda completo. Validar la name table
-frame a frame vs openMSX. (z_decompress NO se usa para el mapa.)
+PORTADO Y VALIDADO (2026-06-18) — núcleo de generación de filas del scroll:
+- **z_map_fetch** (sub 0x99D2-0x99F5): el mapa sale de `ROM[E2AC[(IX23&7)] +
+  col]`, copia `(0x20-col)` bytes del mapa crudo al staging (0xEA40). Validado
+  **32/32** vs openMSX (cap_segfetch.tcl). Confirma: staging = mapa CRUDO
+  (0x17=run de 23), buffer visible = runs YA expandidos. Tabla 0xE2AC en la
+  apertura: [0]=0,[1]=A444,[2]=A4A4,[3]=A564,[4]=A624,[5]=A63C.
+- **z_map_expand** (sub 0x99FD-0x9A67): expansor de runs. 8 columnas en 0xE2E0
+  (4B c/u: tilebase+0 [bit6=run multi-fila, 0x80=terminada], contador+1,
+  ptr-programa ROM +2/+3). Cada columna copia runs `[destOffset,count,tiles]`
+  al staging; al final LDIR de 24 bytes 0xEA48→(0xE715). Validado **byte-exacto
+  contra el estado RAM completo** (0xE000-0xEBFF) antes/después de un pase real
+  (cap_expander.tcl). Camino normal + especial(bit6) exactos.
+- **z_blit_playfield** (sub 0x9A80): buffer 0xE800 → name table. Validado 24/24.
+
+MAPEADO PERO SIN PORTAR (driver alto del scroll, próxima sesión):
+- **Prólogo 0x9888-0x98D2**: arma E2AE/E2B0/E2B2 desde 0xE702 (sección/nivel) y
+  resetea IX+23/24/25 + E71A=0xEA40, IY=0xE2C0.
+- **Driver loop 0x98D4-0x99CF** (bloque 0xE2C0, 4×8B: pos+0/+1, ptr+2/+3,
+  ptr2+4/+5, timer+6, timer+7): stream de comandos propio (0xFF en 0x990D),
+  selecciona segmento de 0xE2AC por `(IY+1)>>3 & 0x0E`, LDIR a (E71A), y suma
+  tile-base C=0x17/0x2E al mapa (0x9986) según bits de IY+1.
+- **Shift vertical 0x9820-0x986D** (rebuild 0x9802): desplaza el buffer 0xE800
+  por (IX+13) filas (LDIR/LDDR) + copia de columnas 0x986E.
+- **Comando 0x95A8 / recarga 0x95ED**: cruce de segmento + **spawn de objetos**
+  (tabla 0xE620, slot-finder 0x9B22) — acopla scroll con enemigos.
+- **Despacho**: las rutinas (0x9802/0x9820/...) se llaman por TABLA INDIRECTA
+  (cluster ~ROM 0x6909, p.ej. 9802/6801), no por CALL directo — hay que fijar
+  el dispatcher de estado para validar el tick per-frame completo.
+PRÓXIMO PASO CONCRETO: capturar RAM completa antes/después de UN tick per-frame
+(método cap_expander, ya probado), transcribir prólogo+driver+shift, validar
+RAM byte-exacta; luego integrar al loop runtime. (z_decompress NO se usa para
+el mapa.)
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
