@@ -2472,6 +2472,8 @@
   5CD8  EB          EX DE,HL
   5CD9  F1          POP AF
   5CDA  16 FF       LD D,0xff
+
+; --- L5CDC ---
   5CDC  5F          LD E,A
 
 ; --- L5CDD ---
@@ -2505,9 +2507,28 @@
   5CFF  D1          POP DE
   5D00  C1          POP BC
   5D01  C9          RET
-  5D02  DB 0x56, 0x23, 0x18, 0xD7, 0x4E, 0x23, 0xE5, 0xE1 ; V#..N#..
-  5D0A  DB 0xE5, 0x46, 0x23, 0x7E, 0x23, 0xCD, 0x1A, 0x5D ; .F#~#..]
-  5D12  DB 0x10, 0xF9, 0x0D, 0x20, 0xF2, 0xF1, 0x18, 0xC3 ; ... ....
+  5D02  DB 0x56, 0x23, 0x18, 0xD7                   ; V#..
+
+; --- L5D06 ---
+  5D06  4E          LD C,(HL)
+  5D07  23          INC HL
+  5D08  E5          PUSH HL
+
+; --- L5D09 ---
+  5D09  E1          POP HL
+  5D0A  E5          PUSH HL
+  5D0B  46          LD B,(HL)
+  5D0C  23          INC HL
+
+; --- L5D0D ---
+  5D0D  7E          LD A,(HL)
+  5D0E  23          INC HL
+  5D0F  CD 1A 5D    CALL L5D1A
+  5D12  10 F9       DJNZ L5D0D
+  5D14  0D          DEC C
+  5D15  20 F2       JR NZ,L5D09
+  5D17  F1          POP AF
+  5D18  18 C3       JR L5CDD
 
 ; --- L5D1A ---
   5D1A  C5          PUSH BC

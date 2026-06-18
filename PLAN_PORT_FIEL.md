@@ -76,11 +76,24 @@ Avance (2026-06-17):
     grueso del título pasa por acá.
   * 0x02A5/0x02E5 (BIOS LDIRVM): copian buffers RAM→VRAM.
   * **0x046D (BIOS): 768 bytes = la NAME TABLE** completa (un LDIRVM).
-  → El título es una TUBERÍA DE DESCOMPRESIÓN: la data se descomprime a un
-  buffer en RAM y de ahí va a VRAM (LDIRVM / OUT loop). PENDIENTE: trazar el
-  puntero fuente (HL/DE) que alimenta el loader para decodificar el formato
-  de los patrones, ubicar la data en ROM y portar el descompresor; luego
-  comparar VRAM byte a byte (suite `vram_title`, como en The Castle).
+- FUENTE trazada (tools/trace_src.tcl): el loader lee HL **directo de la ROM
+  del cartucho**, rango 0x4827-0x70B6 (no hay buffer RAM intermedio para el
+  grueso). 27048 escrituras.
+- **DESCOMPRESOR ubicado y desensamblado** (tools/trace_caller.tcl →
+  retorno 0x5D28; disasm seedeado en zanac_disasm.asm, 0x5CDC-0x5D2B):
+  RLE ANIDADO con escape. Registros: D = byte-marcador (escape), E bit0 =
+  flag "run con cuenta explícita", HL = puntero al stream en ROM.
+  * L5CDD (loop): A=(HL); si A==D → escape; si no → CALL L5D1A (emite A).
+  * Escape simple (un D): toggle E bit0 (alterna cuenta 1 ↔ cuenta del stream).
+  * D D <a>: CALL L5C2E = referencia vía TABLA DE WORDS INLINE (idiom
+    EX(SP),HL) — salta a un sub-stream.
+  * L5D06: run anidado (C=cuenta externa, B=interna, A=valor) → L5D1A.
+  * L5D1A: emite A vía L5C07 (OUT 0x98); B=1 o B=(HL) según E bit0.
+  PENDIENTE: portar el descompresor a C, ubicar sus call-sites y los params
+  (D/E/HL/dest VRAM) por cada sección (patrones/color/name), y comparar VRAM
+  byte a byte (suite `vram_title`, como en The Castle).
+- INFRA: z80dis.py ahora acepta `--seed 0xADDR` para entradas alcanzadas por
+  saltos indirectos/tablas (como el descompresor).
 
 ### Fase 2 — Scroll vertical + mapa de nivel
 El corazón de Zanac. Cómo se almacena el mapa de fondo, cómo scrollea

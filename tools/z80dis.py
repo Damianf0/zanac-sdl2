@@ -300,6 +300,12 @@ def main():
     init = d.rw(org + 2)
     statement = d.rw(org + 4)
     entries = [e for e in (init, statement) if d.inside(e)]
+    # entradas extra (código alcanzado por saltos indirectos / tablas) que el
+    # descenso estático no encuentra solo: --seed 0xADDR [0xADDR ...]
+    if '--seed' in sys.argv:
+        i = sys.argv.index('--seed') + 1
+        while i < len(sys.argv) and sys.argv[i].startswith('0x'):
+            entries.append(int(sys.argv[i], 0)); i += 1
     d.label.update({e: None for e in entries})
     d.walk(entries)
     d.assign_labels()

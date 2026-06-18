@@ -6,3 +6,6 @@ zanac_ref*.png
 SDL2.dll
 probe_boot_out.txt
 trace_vdpwr_out.txt
+trace_src_out.txt
+trace_caller_out.txt
+dis_range_out.txt
