@@ -134,10 +134,23 @@ MECANISMO DESCUBIERTO (2026-06-18, tools/probe_scroll*.tcl, openMSX):
 - La name table es entonces una VENTANA al mapa; cada paso desplaza filas y
   escribe la fila nueva desde los datos del mapa.
 
-PENDIENTE: ubicar los datos del mapa en ROM y su formato (¿comprimido con el
-mismo descompresor?), la variable de posición/scroll, el motor que desplaza
-la name table y genera la fila nueva, y el ritmo. Validar la secuencia de
-escrituras a la name table frame a frame vs openMSX.
+RENDER DEL SCROLL MAPEADO (2026-06-18, probe_scrollpc/mapbuf):
+- **0xE800 = buffer del mapa en RAM** (la ventana del playfield, filas de
+  24 tiles = 24 cols de ancho; el panel lateral del HUD ocupa cols 24-31).
+  VERIFICADO: 0xE800.. espeja exactamente la name table del playfield
+  (desfasado por la fila de scroll vigente).
+- **Rutina de blit 0x9A80** (escritor 0x9AB6, ~99 wr/frame): SETWRT(0x3800
+  + fila*0x20); copia 24 bytes desde (DE=0xE800+...) por OUT(0x98); avanza
+  fila. Dibuja A filas (A = 0x19 - IX[0x14], el contador de filas a
+  refrescar). Hay un camino "split" (0x9AC5, usa IY=0xE180 con offset
+  por fila en IY+24) para el borde donde el buffer circular envuelve.
+- Modelo del scroll: el motor actualiza 0xE800 (lo desplaza + mete filas
+  nuevas del mapa de nivel) y esta rutina lo blittea a VRAM.
+
+PENDIENTE (núcleo de Fase 2): el MOTOR que llena/desplaza 0xE800 desde el
+mapa de nivel en ROM — ubicar el mapa y su formato (¿comprimido con
+z_decompress?), la variable de posición/scroll, y el ritmo. Después portar
+el blit (0x9A80) + el motor y validar la name table frame a frame vs openMSX.
 
 ### Fase 3 — Jugador (nave): movimiento + disparo
 Input, límites, sprite, disparo principal y la rotación de armas
