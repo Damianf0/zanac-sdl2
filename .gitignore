@@ -4,3 +4,5 @@ zanac_ref*.txt
 zanac_ref*.png
 *.exe
 SDL2.dll
+probe_boot_out.txt
+trace_vdpwr_out.txt

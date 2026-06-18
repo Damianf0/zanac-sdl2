@@ -61,8 +61,26 @@ Avance (2026-06-17):
   0x43DA), stack 0xF000, limpia RAM 0xE000-0xE7FF, y llama una cadena de
   init (L4E45, L513F, L516C, L428A, L5A11, L41DB, L5BEC, L42E2...).
   `L4E45` = gestión de SLOTS MSX (RSLREG/ENASLT) → SE IGNORA en el port C.
-- PENDIENTE: ubicar la carga de VRAM (tiles/patrones/name table) y portar
-  el render del título; comparar VRAM byte a byte vs openMSX.
+- TÍTULO capturado y caracterizado (oráculo): `tests/fixtures/vram_title.bin`
+  (16 KB, estable a t=6s) + `vdp_title.txt`. SCREEN 2: patrones 0x0000-17FF,
+  color 0x2000-37FF, name 0x3800. El título NO es un bitmap full-screen:
+  es una pantalla TILEADA — texto por FUENTE (name table usa códigos ASCII:
+  "SCORE...0" = 0x53,0x43,0x4F...) + tiles de logo (corrida 0xD5-0xDC). 87
+  tiles distintos. Los patrones/color NO están crudos en la ROM.
+- CARGADOR ubicado (dinámico, tools/trace_vdpwr.tcl — histograma de PC que
+  escriben al puerto VDP 0x98 durante el boot):
+  * 0x23CA (BIOS): clear de 16 KB de VRAM al arranque.
+  * **0x5C00 (cart): primitivas de escritura a VRAM** — L5C07 = `OUT(C),A`
+    (BC=(0x0007)=puerto 0x98); L5C10 = copia un stream terminado en 0x00
+    desde (HL) a VRAM (L5BFC = variante con DI). 21866+5182 escrituras: el
+    grueso del título pasa por acá.
+  * 0x02A5/0x02E5 (BIOS LDIRVM): copian buffers RAM→VRAM.
+  * **0x046D (BIOS): 768 bytes = la NAME TABLE** completa (un LDIRVM).
+  → El título es una TUBERÍA DE DESCOMPRESIÓN: la data se descomprime a un
+  buffer en RAM y de ahí va a VRAM (LDIRVM / OUT loop). PENDIENTE: trazar el
+  puntero fuente (HL/DE) que alimenta el loader para decodificar el formato
+  de los patrones, ubicar la data en ROM y portar el descompresor; luego
+  comparar VRAM byte a byte (suite `vram_title`, como en The Castle).
 
 ### Fase 2 — Scroll vertical + mapa de nivel
 El corazón de Zanac. Cómo se almacena el mapa de fondo, cómo scrollea
