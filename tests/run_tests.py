@@ -63,6 +63,31 @@ def main():
     results.append(check('descompresor de gráficos (sub_5CDC, 17264 bytes vs openMSX)',
                          t_decomp))
 
+    # --- gráficos del título (patrones+sprites+color) vs VRAM de openMSX ------
+    # ZANAC_TITLEGFX corre el cargador (descompresor por la receta de SETWRT)
+    # y vuelca VRAM 0x0000-0x37FF; debe ser idéntico a la VRAM real del título
+    # (tools/cap_vram.tcl → vram_title.bin) en patrones, sprites y color.
+    # (La name table 0x3800+ = copias literales, próximo incremento.)
+    def t_titlegfx():
+        out = os.path.join(tempfile.gettempdir(), 'ztitlegfx.bin')
+        env = dict(os.environ, ZANAC_TITLEGFX=out)
+        r = subprocess.run([EXE], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 or not os.path.exists(out):
+            return ['exe falló']
+        got = open(out, 'rb').read()
+        os.remove(out)
+        ref = open(os.path.join(FIX, 'vram_title.bin'), 'rb').read()[:0x3800]
+        errs = []
+        for name, s, e in (('pattern', 0, 0x1800), ('sprite', 0x1800, 0x2000),
+                           ('color', 0x2000, 0x3800)):
+            bad = sum(1 for i in range(s, e) if got[i] != ref[i])
+            if bad:
+                errs.append('%s: %d/%d bytes difieren' % (name, bad, e - s))
+        return errs
+    results.append(check('gráficos del título (patrones+sprites+color vs openMSX)',
+                         t_titlegfx))
+
     ok = sum(results)
     print('\n%d/%d suites OK' % (ok, len(results)))
 

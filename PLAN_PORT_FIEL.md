@@ -96,10 +96,18 @@ Avance (2026-06-17):
   5EF0}, ESC=FF, flag=0). Produce **17264/17264 bytes idénticos** a openMSX
   (tools/trace_out.tcl → tests/fixtures/decomp_title.txt). Suite Zanac
   nueva (tests/run_tests.py), 1/1.
-- PENDIENTE: las otras 2 rutas de copia del título (literal 0x00-terminada
-  L5C10 = 4602 B, y L5BFC = 5182 B); ubicar los dest VRAM (SETWRT) por
-  sección y escribir el título completo a VRAM; comparar VRAM byte a byte
-  (suite `vram_title`).
+- **GRÁFICOS DEL TÍTULO PORTADOS Y VALIDADOS ✅ (2026-06-17)** — receta
+  capturada (tools/trace_orch.tcl): patrón 3 tercios ← 5EFC, sprites 0x1800
+  ← 6976, color 3 tercios ← 64D3, overlay logo (patrón +0x580 ← 5D2C, color
+  +0x580 ← 5EF0). `load_title_gfx()` en main.c reproduce la VRAM
+  **byte-idéntica** en patrones (0x0000-17FF), sprites (0x1800-1FFF) y color
+  (0x2000-37FF) = 14336 bytes. Confirmado: los 3 tercios son idénticos (el
+  descompresor reescribe la misma data). Suite Zanac 2/2.
+- PENDIENTE (último de la name table): la NAME TABLE (0x3800-3AFF, el HUD
+  "SCORE/TOP" + tiles de logo) se arma con 2 rutas: copia literal 0x00-term
+  (L5C10, textos desde 5A2A...) y la copia de filas de tiles desde la tabla
+  ROM 0x4827 (stride 0x19, rutina 0x5BC0 vía L5BFC). Portar ambas + su
+  orquestación → título COMPLETO byte-idéntico.
 - INFRA: z80dis.py ahora acepta `--seed 0xADDR` para entradas alcanzadas por
   saltos indirectos/tablas (como el descompresor).
 

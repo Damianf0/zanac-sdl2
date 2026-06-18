@@ -65,6 +65,52 @@ static void vdp_init_zanac(void)
     for (uint8_t r = 0; r < 8; r++) hal_vdp_write_reg(r, regs[r]);
 }
 
+/* ==========================================================================
+ * Carga de GRÁFICOS del título (patrones + sprites + color) — la receta de
+ * SETWRT + descompresión capturada de la orquestación real (trace_orch.tcl):
+ *   patrón 3 tercios ← 5EFC ; sprites 0x1800 ← 6976 ; color 3 tercios ← 64D3 ;
+ *   overlay del logo (patrón +0x580 ← 5D2C ; color +0x580 ← 5EF0).
+ * (La name table = copias literales + tabla 0x4827, próximo incremento.)
+ * ========================================================================== */
+typedef struct { uint16_t addr; } VramCtx;
+static void emit_vram(void *ctx, uint8_t b)
+{
+    VramCtx *c = (VramCtx *)ctx;
+    hal_vdp_write_vram(c->addr++, b);
+}
+
+static void load_title_gfx(void)
+{
+    VramCtx c;
+    for (int t = 0; t < 3; t++) { c.addr = (uint16_t)(t * 0x800);
+        z_decompress(0x5EFCu, emit_vram, &c); }                 /* patrones  */
+    c.addr = 0x1800u; z_decompress(0x6976u, emit_vram, &c);     /* sprites   */
+    for (int t = 0; t < 3; t++) { c.addr = (uint16_t)(0x2000 + t * 0x800);
+        z_decompress(0x64D3u, emit_vram, &c); }                 /* color     */
+    for (int t = 0; t < 3; t++) { c.addr = (uint16_t)(0x0580 + t * 0x800);
+        z_decompress(0x5D2Cu, emit_vram, &c); }                 /* logo pat  */
+    for (int t = 0; t < 3; t++) { c.addr = (uint16_t)(0x2580 + t * 0x800);
+        z_decompress(0x5EF0u, emit_vram, &c); }                 /* logo col  */
+}
+
+/* Harness: ZANAC_TITLEGFX=out.bin → limpia VRAM, carga los gráficos del
+ * título y vuelca VRAM 0x0000-0x37FF (patrones+sprites+color) para comparar
+ * contra tests/fixtures/vram_title.bin. */
+static int titlegfx_harness(const char *out)
+{
+    FILE *f = fopen(out, "wb");
+    if (!f) return 1;
+    for (uint16_t a = 0; a < 0x3800u; a++) hal_vdp_write_vram(a, 0u);  /* clear */
+    load_title_gfx();
+    for (uint16_t a = 0; a < 0x3800u; a++) {
+        uint8_t b = hal_vdp_read_vram(a);
+        fwrite(&b, 1, 1, f);
+    }
+    fclose(f);
+    printf("ZANAC_TITLEGFX -> %s\n", out);
+    return 0;
+}
+
 /* Harness de validación del descompresor (sin SDL): ZANAC_DECOMP=out.txt
  * corre las 13 invocaciones del título (mismos punteros fuente que capturó
  * tools/trace_entry.tcl) y vuelca cada byte de salida — comparable contra
@@ -96,6 +142,8 @@ int main(int argc, char *argv[])
     {
         const char *dc = getenv("ZANAC_DECOMP");
         if (dc) { int r = decomp_harness(dc); free(rom); return r; }
+        const char *tg = getenv("ZANAC_TITLEGFX");
+        if (tg) { int r = titlegfx_harness(tg); free(rom); return r; }
     }
 
     if (!hal_init(false)) { free(rom); return 1; }
