@@ -47,11 +47,22 @@ y se porta del disasm.
 
 ## Fases (roadmap, a refinar al avanzar)
 
-### Fase 1 — Arranque + VDP fiel
+### Fase 1 — Arranque + VDP fiel ← EN CURSO
 Portar el INIT (0x4010) y la inicialización de pantalla: modo SCREEN 2,
 carga de tiles/patrones a VRAM, paleta. Objetivo: la **pantalla de título**
 byte-idéntica a openMSX (fixture de VRAM, como `vram_title` de The Castle).
-Genericar el HAL acá.
+
+Avance (2026-06-17):
+- HAL genericado (sin deps de The Castle) + `build.ps1` + `main.c` esqueleto:
+  carga la ROM, inicializa el HAL en SCREEN 2 con los registros VDP reales
+  de Zanac y presenta frames. **Compila y corre** (zanac.exe 79 KB; smoke
+  headless CASTLE_FAST OK) — la infraestructura reusada funciona.
+- Boot mapeado: INIT (0x4010) instala el gancho de interrupción (HKEYI ←
+  0x43DA), stack 0xF000, limpia RAM 0xE000-0xE7FF, y llama una cadena de
+  init (L4E45, L513F, L516C, L428A, L5A11, L41DB, L5BEC, L42E2...).
+  `L4E45` = gestión de SLOTS MSX (RSLREG/ENASLT) → SE IGNORA en el port C.
+- PENDIENTE: ubicar la carga de VRAM (tiles/patrones/name table) y portar
+  el render del título; comparar VRAM byte a byte vs openMSX.
 
 ### Fase 2 — Scroll vertical + mapa de nivel
 El corazón de Zanac. Cómo se almacena el mapa de fondo, cómo scrollea
