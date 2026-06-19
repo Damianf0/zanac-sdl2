@@ -295,9 +295,36 @@ La NAVE = sprites 0+1 del SAT, patrones **0x38/0x3C** (16x16, 2 colores),
 posición de gameplay ~X=0x78 Y=0x8F (centro-abajo), colores 0x8F/0x81. Los
 patrones de sprite ya están en VRAM 0x1800 (idénticos título/gameplay). El
 juego NO usa BIOS GTSTCK/GTTRIG — lee el joystick por el puerto PSG (reg 14/15).
-Falta: hallar las variables de posición del jugador en RAM, la rutina de
-movimiento/límites y el refresh del SAT (per-frame, ~0x9AE4). El HAL ya ofrece
-hal_joystick_read()/hal_key_pressed() para alimentar la lógica porteada.
+El HAL ya ofrece hal_joystick_read()/hal_key_pressed().
+
+EN VIVO (provisional): la nave se RENDERIZA fiel sobre el playfield (sprites
+0+1, patrones 0x38/0x3C, col 0x8F/0x81) y se mueve con el joystick dentro de
+los límites REALES. El movimiento es provisional (paso fijo 2px); la física
+exacta está mapeada (abajo) pero pendiente de portar+validar.
+
+SUBSISTEMA DE LA NAVE — MAPA COMPLETO (2026-06-18):
+- **Struct en E300**: +0=color(0x81), +1=eje A (vertical, límite 0x1E-0xB8),
+  +2=eje B (horizontal X, límite 0x28-0xC8), +3=patrón(0x38), +6/+7=fracción
+  fixed-point de cada eje, +8/+9=velocidad eje A, +10/+11=velocidad eje B,
+  +23(E317)=flags de velocidad (powerups). Sprite: Y=(IX+1)+0xF1, X=IX+2.
+- **Loop principal 0x4074**: CALL 0x9480(scroll) · 0x8F5E(explosiones) ·
+  0x9393(cadena de objetos) · 0x4663(game over) · 0xBF2C. El update de la nave
+  está en el banco 0x76xx (entry ~0x7600).
+- **Input 0x4343**: WRTPSG(15,0x8F)+RDPSG(14)→(E100); WRTPSG(15,0xCF)+RDPSG(14)
+  → flags; 0x4360 procesa bits→dirección E10C (base 0x04, ±1/±3 por bit).
+- **Velocidad**: 0x7615 lee E10C; índice por tabla 0x7758 (06,08,0A,04,0C,0C,02,
+  00); CALL 0x4CF7 → tabla de VECTORES 0x4D65 (8 entradas de 4 bytes = (velA,
+  velB), magnitud 0x80 = 0.5px/frame): [0](0,80)[1](30,76)[2](5A,5A)[3](76,30)
+  [4](80,0)[5](76,-30)[6](5A,-5A)[7](30,-8A); escalado por IX+23 bit6(×3)/bit7
+  (×16) = powerups; resultado → IX+8/9 y IX+10/11.
+- **Integración 0x7615-0x766E**: posA=(IX+1,IX+6)+=velA, clamp 0x1E-0xB8;
+  posB=(IX+2,IX+7)+=velB, clamp 0x28-0xC8.
+- **Render del SAT 0x76E0-0x7747**: arma sprites 0+1 en el shadow (puntero E122),
+  copiado a VRAM SAT 0x3B80. (HAL: fix reg5 a &0x7F para leer 0x3B80.)
+PRÓXIMO PASO (física fiel): capturar el struct E300 + velocidades frame a frame
+INYECTANDO input direccional en openMSX, decodificar exacto dirección→vector→
+posición, portar la integración fixed-point + el mapeo de input, y validar las
+posiciones contra la captura. Después: disparo (arma principal + 8 secundarias).
 
 ### Fase 4 — Enemigos + proyectiles + IA adaptativa (ALC)
 El sistema de enemigos (spawns por scroll), proyectiles, colisiones, y la

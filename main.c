@@ -350,21 +350,34 @@ int main(int argc, char *argv[])
      * 0x8F/0x81). Render fiel; el MOVIMIENTO es provisional (paso fijo dentro
      * de los límites reales) — la física fixed-point con tabla de velocidad
      * 0x7758 se portará en el siguiente bloque. */
-    int px = 0x78, py = 0xA0;                       /* posición inicial (E302/E301) */
+    /* Posición fixed-point 8.8 (hi=píxel, lo=fracción), igual que el juego:
+     * horizontal hx (límite 0x28-0xC8 = IX+2), vertical vy (0x1E-0xB8 = IX+1).
+     * Velocidades reales de la tabla 0x4D65: 0x80=0.5px/frame cardinal,
+     * 0x5A diagonal. Integración + clamp como 0x7615-0x766E. (Pendiente: el
+     * mapeo exacto de input E10C y el escalado por powerups IX+23.) */
+    int hx = 0x78 << 8, vy = 0xA0 << 8;
+    #define PX ((hx >> 8) & 0xFF)
+    #define PY ((vy >> 8) & 0xFF)
     #define DRAW_SHIP() do { \
-        uint8_t sy = (uint8_t)(py - 15); \
-        hal_vdp_write_vram(0x3B80u, sy);        hal_vdp_write_vram(0x3B81u, (uint8_t)px); \
+        uint8_t sy = (uint8_t)(PY - 15); \
+        hal_vdp_write_vram(0x3B80u, sy);        hal_vdp_write_vram(0x3B81u, (uint8_t)PX); \
         hal_vdp_write_vram(0x3B82u, 0x38u);     hal_vdp_write_vram(0x3B83u, 0x8Fu); \
-        hal_vdp_write_vram(0x3B84u, (uint8_t)(sy+2)); hal_vdp_write_vram(0x3B85u, (uint8_t)px); \
+        hal_vdp_write_vram(0x3B84u, (uint8_t)(sy+2)); hal_vdp_write_vram(0x3B85u, (uint8_t)PX); \
         hal_vdp_write_vram(0x3B86u, 0x3Cu);     hal_vdp_write_vram(0x3B87u, 0x81u); \
         hal_vdp_write_vram(0x3B88u, 0xD0u);     /* fin de sprites */ \
     } while (0)
     #define MOVE_SHIP() do { \
-        uint8_t d = hal_joystick_read(0); \
-        if (d==2||d==3||d==4) px += 2; else if (d==6||d==7||d==8) px -= 2; \
-        if (d==8||d==1||d==2) py -= 2; else if (d==4||d==5||d==6) py += 2; \
-        if (px < 0x28) px = 0x28; if (px > 0xC8) px = 0xC8; \
-        if (py < 0x1E) py = 0x1E; if (py > 0xB8) py = 0xB8; \
+        uint8_t d = hal_joystick_read(0); int dvx = 0, dvy = 0; \
+        switch (d) { \
+            case 1: dvy = -0x80; break;          case 5: dvy =  0x80; break; \
+            case 3: dvx =  0x80; break;          case 7: dvx = -0x80; break; \
+            case 2: dvx =  0x5A; dvy = -0x5A; break; case 4: dvx =  0x5A; dvy =  0x5A; break; \
+            case 6: dvx = -0x5A; dvy =  0x5A; break; case 8: dvx = -0x5A; dvy = -0x5A; break; \
+        } \
+        /* nivel de velocidad provisional (×6 ≈ 3px/frame); real = IX+23 powerups */ \
+        hx += dvx * 6; vy += dvy * 6; \
+        if (PX < 0x28) hx = 0x28<<8; if (PX > 0xC8) hx = 0xC8<<8; \
+        if (PY < 0x1E) vy = 0x1E<<8; if (PY > 0xB8) vy = 0xB8<<8; \
     } while (0)
 
     /* INTERACTIVO: título → ESPACIO/fire arranca el nivel 1 → scroll + nave. */
